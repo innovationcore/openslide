@@ -17,6 +17,26 @@
 
 static const struct _openslide_ops philips_isyntax_ops;
 
+typedef struct philips_isyntax_level {
+    struct _openslide_level base;
+    int image_idx;
+    int level_idx;
+    struct _openslide_grid *grid;
+} philips_isyntax_level;
+
+static void isyntax_init_dummy_codeblocks(isyntax_t* isyntax) {
+    // Blocks with 'background' coefficients, to use for filling in margins at the edges (in case the neighboring codeblock doesn't exist)
+    if (!isyntax->black_dummy_coeff) {
+        isyntax->black_dummy_coeff = (icoeff_t*)calloc(1, isyntax->block_width * isyntax->block_height * sizeof(icoeff_t));
+    }
+    if (!isyntax->white_dummy_coeff) {
+        isyntax->white_dummy_coeff = (icoeff_t*)malloc(isyntax->block_width * isyntax->block_height * sizeof(icoeff_t));
+        for (i32 i = 0; i < isyntax->block_width * isyntax->block_height; ++i) {
+            isyntax->white_dummy_coeff[i] = 255;
+        }
+    }
+}
+
 static bool philips_isyntax_detect(
         const char *filename,
         struct _openslide_tifflike *tl G_GNUC_UNUSED,
@@ -37,6 +57,82 @@ static bool philips_isyntax_detect(
     }
 }
 
+static bool philips_isyntax_read_tile(
+        openslide_t *osr,
+        cairo_t *cr,
+        struct _openslide_level *osr_level,
+        int64_t tile_col, int64_t tile_row,
+        void *arg,
+        GError **err) {
+    isyntax_t *data = osr->data;
+    philips_isyntax_level* level = osr_level;
+
+    LOG("level=%d tile_col=%d tile_row=%d", level->level_idx, tile_col, tile_row);
+    // tile size
+    int64_t tw = data->tile_width;
+    int64_t th = data->tile_height;
+
+    // cache
+    g_autoptr(_openslide_cache_entry) cache_entry = NULL;
+    uint32_t *tiledata = _openslide_cache_get(osr->cache,
+                                              level, tile_col, tile_row,
+                                              &cache_entry);
+    if (!tiledata) {
+//        // slides with multiple ROIs are sparse
+//        bool is_missing;
+//        if (!_openslide_tiff_check_missing_tile(tiffl, tiff,
+//                                                tile_col, tile_row,
+//                                                &is_missing, err)) {
+//            return false;
+//        }
+//        if (is_missing) {
+//            // nothing to draw
+//            return true;
+//        }
+
+//        g_auto(_openslide_slice) box = _openslide_slice_alloc(tw * th * 4);
+        LOG("### isyntax_load_tile(x=%d, y=%d)", tile_col, tile_row);
+        u32* tile = isyntax_load_tile(
+                data,
+                &data->images[level->image_idx],
+                level->level_idx, tile_col, tile_row);
+        _openslide_slice box = {
+                .p = tile,
+                .len = tw * th * 4
+        };
+
+        if (!tile) {
+            g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
+                        "isyntax_load_tile failed");
+            return false;
+        }
+
+        // clip, if necessary
+        if (!_openslide_clip_tile(box.p,
+                                  tw, th,
+                                  level->base.w - tile_col * tw,
+                                  level->base.h - tile_row * th,
+                                  err)) {
+            return false;
+        }
+
+        // put it in the cache
+        tiledata = _openslide_slice_steal(&box);
+        _openslide_cache_put(osr->cache, osr_level, tile_col, tile_row,
+                             tiledata, tw * th * 4,
+                             &cache_entry);
+    }
+
+    // draw it
+    g_autoptr(cairo_surface_t) surface =
+            cairo_image_surface_create_for_data((unsigned char *) tiledata,
+                                                CAIRO_FORMAT_ARGB32,
+                                                tw, th, tw * 4);
+    cairo_set_source_surface(cr, surface, 0, 0);
+    cairo_paint(cr);
+
+    return true;
+}
 
 static bool philips_isyntax_open(
         openslide_t *osr,
@@ -44,38 +140,49 @@ static bool philips_isyntax_open(
         struct _openslide_tifflike *tl,
         struct _openslide_hash *quickhash1,
         GError **err) {
+    static bool threadmemory_initialized = false;
+    if (!threadmemory_initialized) {
+        get_system_info(/*verbose=*/true);
+        init_thread_memory(0);
+    }
     LOG("Opening file %s", filename);
 
     isyntax_t *data = malloc(sizeof(isyntax_t));
     memset(data, 0, sizeof(isyntax_t));
     osr->data = data;
 
-    bool open_result =  isyntax_open(data, filename);
+    bool open_result = isyntax_open(data, filename);
     LOG_VAR("%d", (int)open_result);
     LOG_VAR("%d", data->image_count);
+    isyntax_init_dummy_codeblocks(data);
+
     // Find wsi image. Extracting other images not supported. Assuming only one wsi.
-    isyntax_image_t* wsi_image = -1;
-    for (int i = 0; i < data->image_count; ++i) {
-        LOG_VAR("%d", data->images[i].image_type);
-        if (data->images[i].image_type == ISYNTAX_IMAGE_TYPE_WSI) {
-            // TODO(avirodov): use data->wsi_image_index, is always available?
-            wsi_image = &data->images[i];
-        }
-    }
-    LOG_VAR("%p", wsi_image);
-    g_assert(wsi_image != NULL);
+    int wsi_image_idx = data->wsi_image_index;
+    LOG_VAR("%d", wsi_image_idx);
+    g_assert(wsi_image_idx >= 0 && wsi_image_idx < data->image_count);
+    isyntax_image_t* wsi_image = &data->images[wsi_image_idx];
 
     isyntax_level_t* levels = wsi_image->levels;
     // TODO(avirodov): memleaks, here and below.
-    osr->levels = malloc(sizeof(struct _openslide_level*) * wsi_image->level_count);
-
+    osr->levels = malloc(sizeof(philips_isyntax_level*) * wsi_image->level_count);
+    osr->level_count = wsi_image->level_count;
     for (int i = 0; i < wsi_image->level_count; ++i) {
-        osr->levels[i] = malloc(sizeof(struct _openslide_level));
-        osr->levels[i]->downsample = levels[i].downsample_factor;
-        osr->levels[i]->w = levels[i].width_in_tiles * data->tile_width;
-        osr->levels[i]->h = levels[i].height_in_tiles * data->tile_height;
-        osr->levels[i]->tile_w = data->tile_width;
-        osr->levels[i]->tile_h = data->tile_height;
+        philips_isyntax_level* level = malloc(sizeof(philips_isyntax_level));
+        level->level_idx = i;
+        level->image_idx = wsi_image_idx;
+        level->base.downsample = levels[i].downsample_factor;
+        level->base.w = levels[i].width_in_tiles * data->tile_width;
+        level->base.h = levels[i].height_in_tiles * data->tile_height;
+        level->base.tile_w = data->tile_width;
+        level->base.tile_h = data->tile_height;
+        osr->levels[i] = level;
+        level->grid = _openslide_grid_create_simple(
+                osr,
+                levels[i].width_in_tiles,
+                levels[i].height_in_tiles,
+                data->tile_width,
+                data->tile_height,
+                philips_isyntax_read_tile);
 
         // LOG_VAR("%d", data->images[wsi_image_idx].levels[i].scale);
         LOG_VAR("%d", i);
@@ -101,20 +208,30 @@ static bool philips_isyntax_open(
 static bool philips_isyntax_paint_region(
         openslide_t *osr, cairo_t *cr,
         int64_t x, int64_t y,
-        struct _openslide_level *level,
+        struct _openslide_level *osr_level,
         int32_t w, int32_t h,
         GError **err) {
+    isyntax_t *data = osr->data;
+    philips_isyntax_level* level = osr_level;
 
+    LOG("x=%d y=%d level=%d w=%d h=%d", x, y, level->level_idx, w, h);
+    return _openslide_grid_paint_region(level->grid, cr, NULL,
+                                        x / level->base.downsample,
+                                        y / level->base.downsample,
+                                        osr_level, w, h,
+                                        err);
 }
 
 static void philips_isyntax_destroy(openslide_t *osr) {
     isyntax_t *data = osr->data;
     for (int i = 0; i < osr->level_count; ++i) {
-        free(osr->levels[i]);
+        philips_isyntax_level* level = osr->levels[i];
+        _openslide_grid_destroy(level->grid);
+        free(level);
     }
     free(osr->levels);
     isyntax_destroy(data);
-     free(data);
+    free(data);
 }
 
 const struct _openslide_format _openslide_format_philips_isyntax = {
