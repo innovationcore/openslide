@@ -408,9 +408,9 @@ unsigned int crc32_skip_carriage_return(unsigned char* buffer, int len);
 //void console_print_verbose(const char* fmt, ...); // defined in console.cpp
 //void console_print_error(const char* fmt, ...); // // defined in console.cpp
 //#endif
-#define console_print(msg, ...) printf("%s: " msg "\n", __FUNCTION__, ##__VA_ARGS__)
-#define console_print_error(msg, ...) printf("ERROR %s: " msg "\n", __FUNCTION__, ##__VA_ARGS__)
-#define console_print_verbose(msg, ...) printf("VERBOSE %s: " msg "\n", __FUNCTION__, ##__VA_ARGS__)
+#define console_print(msg, ...) printf("%s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#define console_print_error(msg, ...) printf("ERROR %s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#define console_print_verbose(msg, ...) printf("VERBOSE %s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
 
 
 // globals

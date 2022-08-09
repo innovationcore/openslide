@@ -39,7 +39,7 @@
 
 //#include "yxml.h"
 //
-//#include "jpeg_decoder.h"
+#include "jpeg_decoder.h"
 //#include "stb_image.h"
 
 //#define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -690,10 +690,18 @@ bool isyntax_parse_xml_header(isyntax_t* isyntax, char* xml_header, i64 chunk_le
 						// Leaf node WITHOUT children.
 						// In this case we didn't already parse the attributes at the YXML_ATTREND stage.
 						// Now at the YXML_ELEMEND stage we can parse the complete tag at once (attributes + content).
+                        char old_char = 0;
+                        if (parser->contentlen > 200) {
+                            old_char = parser->contentbuf[200];
+                            parser->contentbuf[200] = 0;
+                        }
 						console_print_verbose("%sDICOM: %-40s (0x%04x, 0x%04x), size:%-8u = %s\n", get_spaces(parser->node_stack_index),
 						                      parser->current_dicom_attribute_name,
 						                      parser->current_dicom_group_tag, parser->current_dicom_element_tag,
 											  parser->contentlen, parser->contentbuf);
+                        if (parser->contentlen > 200) {
+                            parser->contentbuf[200] = old_char;
+                        }
 
 //						if (parser->node_stack[parser->node_stack_index].group == 0) {
 //							DUMMY_STATEMENT; // probably the group is 0 because this is a top level node.

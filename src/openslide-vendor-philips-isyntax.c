@@ -10,8 +10,12 @@
 #include <math.h>
 #include <string.h>
 #include <tiffio.h>
+#include "isyntax.h"
 
 #define LOG(msg, ...) printf("%s: " msg "\n", __FUNCTION__, ##__VA_ARGS__)
+#define LOG_VAR(fmt, var) printf("%s: %s=" fmt "\n", __FUNCTION__, #var, var)
+
+static const struct _openslide_ops philips_isyntax_ops;
 
 static bool philips_isyntax_detect(
         const char *filename,
@@ -40,160 +44,77 @@ static bool philips_isyntax_open(
         struct _openslide_tifflike *tl,
         struct _openslide_hash *quickhash1,
         GError **err) {
-    LOG("got here\n");
-#if 0
-    // open TIFF
-    g_autoptr(_openslide_tiffcache) tc = _openslide_tiffcache_create(filename);
-    g_auto(_openslide_cached_tiff) ct = _openslide_tiffcache_get(tc, err);
-    if (!ct.tiff) {
-        return false;
-    }
+    LOG("Opening file %s", filename);
 
-    // parse XML document
-    g_autoptr(xmlDoc) doc = parse_xml(ct.tiff, err);
-    if (doc == NULL) {
-        return false;
-    }
-
-    // ensure there is only one WSI DPScannedImage in the XML
-    if (!verify_main_image_count(doc, err)) {
-        return false;
-    }
-
-    // create levels
-    g_autoptr(GPtrArray) level_array =
-            g_ptr_array_new_with_free_func((GDestroyNotify) destroy_level);
-    struct level *prev_l = NULL;
-    do {
-        // get directory
-        tdir_t dir = TIFFCurrentDirectory(ct.tiff);
-
-        // get ImageDescription
-        const char *image_desc;
-        if (!TIFFGetField(ct.tiff, TIFFTAG_IMAGEDESCRIPTION, &image_desc)) {
-            image_desc = NULL;
-        }
-
-        if (TIFFIsTiled(ct.tiff)) {
-            // pyramid level
-
-            // confirm it is either the first image, or reduced-resolution
-            if (prev_l) {
-                uint32_t subfiletype;
-                if (!TIFFGetField(ct.tiff, TIFFTAG_SUBFILETYPE, &subfiletype) ||
-                    !(subfiletype & FILETYPE_REDUCEDIMAGE)) {
-                    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                                "Directory %d is not reduced-resolution", dir);
-                    return false;
-                }
-            }
-
-            // verify that we can read this compression
-            uint16_t compression;
-            if (!TIFFGetField(ct.tiff, TIFFTAG_COMPRESSION, &compression)) {
-                g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                            "Can't read compression scheme");
-                return false;
-            };
-            if (!TIFFIsCODECConfigured(compression)) {
-                g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                            "Unsupported TIFF compression: %u", compression);
-                return false;
-            }
-
-            // create level
-            struct level *l = g_slice_new0(struct level);
-            struct _openslide_tiff_level *tiffl = &l->tiffl;
-            g_ptr_array_add(level_array, l);
-
-            if (!_openslide_tiff_level_init(ct.tiff, dir,
-                                            (struct _openslide_level *) l, tiffl,
-                                            err)) {
-                return false;
-            }
-            l->grid = _openslide_grid_create_simple(osr,
-                                                    tiffl->tiles_across,
-                                                    tiffl->tiles_down,
-                                                    tiffl->tile_w,
-                                                    tiffl->tile_h,
-                                                    read_tile);
-
-            // verify that levels are sorted by size
-            if (prev_l &&
-                (tiffl->image_w > prev_l->tiffl.image_w ||
-                 tiffl->image_h > prev_l->tiffl.image_h)) {
-                g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                            "Unexpected dimensions for directory %d", dir);
-                return false;
-            }
-            prev_l = l;
-
-        } else if (image_desc &&
-                   g_str_has_prefix(image_desc, LABEL_DESCRIPTION)) {
-            // label
-            //g_debug("Adding label image from directory %d", dir);
-            if (!_openslide_tiff_add_associated_image(osr, "label", tc, dir, err)) {
-                return false;
-            }
-
-        } else if (image_desc &&
-                   g_str_has_prefix(image_desc, MACRO_DESCRIPTION)) {
-            // macro image
-            //g_debug("Adding macro image from directory %d", dir);
-            if (!_openslide_tiff_add_associated_image(osr, "macro", tc, dir, err)) {
-                return false;
-            }
-        }
-    } while (TIFFReadDirectory(ct.tiff));
-
-    // override level dimensions and downsamples to work around incorrect
-    // level dimensions in the metadata
-    if (!fix_level_dimensions((struct level **) level_array->pdata,
-                              level_array->len,
-                              doc, err)) {
-        return false;
-    }
-
-    // set hash and properties
-    g_assert(level_array->len > 0);
-    struct level *top_level = level_array->pdata[level_array->len - 1];
-    if (!_openslide_tifflike_init_properties_and_hash(osr, tl, quickhash1,
-                                                      top_level->tiffl.dir,
-                                                      0,
-                                                      err)) {
-        return false;
-    }
-
-    // keep the XML document out of the properties
-    g_hash_table_remove(osr->properties, OPENSLIDE_PROPERTY_NAME_COMMENT);
-    g_hash_table_remove(osr->properties, "tiff.ImageDescription");
-
-    // add properties from XML
-    g_autoptr(xmlXPathContext) ctx = _openslide_xml_xpath_create(doc);
-    add_properties(osr, ctx, "philips", "/DataObject/Attribute");
-    add_mpp_properties(osr);
-
-    // add associated images from XML
-    // errors are non-fatal
-    maybe_add_xml_associated_image(osr, tc, doc,
-                                   "label", LABEL_DATA_XPATH, NULL);
-    maybe_add_xml_associated_image(osr, tc, doc,
-                                   "macro", MACRO_DATA_XPATH, NULL);
-
-    // allocate private data
-    struct philips_ops_data *data = g_slice_new0(struct philips_ops_data);
-    data->tc = g_steal_pointer(&tc);
-
-    // store osr data
-    g_assert(osr->data == NULL);
-    g_assert(osr->levels == NULL);
-    osr->level_count = level_array->len;
-    osr->levels = (struct _openslide_level **)
-            g_ptr_array_free(g_steal_pointer(&level_array), false);
+    isyntax_t *data = malloc(sizeof(isyntax_t));
+    memset(data, 0, sizeof(isyntax_t));
     osr->data = data;
-    osr->ops = &philips_ops;
-#endif
+
+    bool open_result =  isyntax_open(data, filename);
+    LOG_VAR("%d", (int)open_result);
+    LOG_VAR("%d", data->image_count);
+    // Find wsi image. Extracting other images not supported. Assuming only one wsi.
+    isyntax_image_t* wsi_image = -1;
+    for (int i = 0; i < data->image_count; ++i) {
+        LOG_VAR("%d", data->images[i].image_type);
+        if (data->images[i].image_type == ISYNTAX_IMAGE_TYPE_WSI) {
+            // TODO(avirodov): use data->wsi_image_index, is always available?
+            wsi_image = &data->images[i];
+        }
+    }
+    LOG_VAR("%p", wsi_image);
+    g_assert(wsi_image != NULL);
+
+    isyntax_level_t* levels = wsi_image->levels;
+    // TODO(avirodov): memleaks, here and below.
+    osr->levels = malloc(sizeof(struct _openslide_level*) * wsi_image->level_count);
+
+    for (int i = 0; i < wsi_image->level_count; ++i) {
+        osr->levels[i] = malloc(sizeof(struct _openslide_level));
+        osr->levels[i]->downsample = levels[i].downsample_factor;
+        osr->levels[i]->w = levels[i].width_in_tiles * data->tile_width;
+        osr->levels[i]->h = levels[i].height_in_tiles * data->tile_height;
+        osr->levels[i]->tile_w = data->tile_width;
+        osr->levels[i]->tile_h = data->tile_height;
+
+        // LOG_VAR("%d", data->images[wsi_image_idx].levels[i].scale);
+        LOG_VAR("%d", i);
+        LOG_VAR("%d", levels[i].scale);
+        LOG_VAR("%d", levels[i].width_in_tiles);
+        LOG_VAR("%d", levels[i].height_in_tiles);
+        LOG_VAR("%f", levels[i].downsample_factor);
+        LOG_VAR("%f", levels[i].um_per_pixel_x);
+        LOG_VAR("%f", levels[i].um_per_pixel_y);
+        LOG_VAR("%f", levels[i].x_tile_side_in_um);
+        LOG_VAR("%f", levels[i].y_tile_side_in_um);
+        LOG_VAR("%ld", levels[i].tile_count);
+        LOG_VAR("%f", levels[i].origin_offset_in_pixels);
+        LOG_VAR("%f", levels[i].origin_offset.x);
+        LOG_VAR("%f", levels[i].origin_offset.y);
+        LOG_VAR("%d", (int)levels[i].is_fully_loaded);
+    }
+    osr->ops = &philips_isyntax_ops;
+
     return true;
+}
+
+static bool philips_isyntax_paint_region(
+        openslide_t *osr, cairo_t *cr,
+        int64_t x, int64_t y,
+        struct _openslide_level *level,
+        int32_t w, int32_t h,
+        GError **err) {
+
+}
+
+static void philips_isyntax_destroy(openslide_t *osr) {
+    isyntax_t *data = osr->data;
+    for (int i = 0; i < osr->level_count; ++i) {
+        free(osr->levels[i]);
+    }
+    free(osr->levels);
+    isyntax_destroy(data);
+     free(data);
 }
 
 const struct _openslide_format _openslide_format_philips_isyntax = {
@@ -203,9 +124,10 @@ const struct _openslide_format _openslide_format_philips_isyntax = {
         .open = philips_isyntax_open,
 };
 
-int foozzz() {
-    return 0;
-}
+static const struct _openslide_ops philips_isyntax_ops = {
+        .paint_region = philips_isyntax_paint_region,
+        .destroy = philips_isyntax_destroy,
+};
 
 
 #if 0
