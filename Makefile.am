@@ -17,6 +17,11 @@ src_libopenslide_la_LIBADD = $(GLIB2_LIBS) $(CAIRO_LIBS) $(SQLITE3_LIBS) \
 	$(LIBJPEG_LIBS) $(GDKPIXBUF_LIBS) $(ZLIB_LIBS)
 
 src_libopenslide_la_SOURCES = \
+	src/isyntax.c \
+	src/yxml.c \
+	src/linux_utils.c \
+	src/platform.c \
+	src/jpeg_decoder.c \
 	src/openslide.c \
 	src/openslide-cache.c \
 	src/openslide-decode-gdkpixbuf.c \
