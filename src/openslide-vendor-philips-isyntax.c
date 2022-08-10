@@ -24,6 +24,52 @@ typedef struct philips_isyntax_level {
     struct _openslide_grid *grid;
 } philips_isyntax_level;
 
+// TODO(avirodov): un-hack this and properly pass around (maybe via resource_id, or change api).
+static openslide_t *tmp_global_osr;
+
+void submit_tile_completed(
+        i32 resource_id,
+        void* tile_pixels,
+        i32 scale,
+        i32 tile_index,
+        i32 tile_width,
+        i32 tile_height) {
+    isyntax_t *data = tmp_global_osr->data;
+    philips_isyntax_level* level = (philips_isyntax_level*)tmp_global_osr->levels[scale];
+
+    i32 width = data->images[level->image_idx].levels[level->level_idx].width_in_tiles;
+    i32 tile_col = tile_index % width;
+    i32 tile_row = tile_index / width;
+    LOG("### level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
+    // tile size
+    int64_t tw = data->tile_width;
+    int64_t th = data->tile_height;
+
+    // cache
+    g_autoptr(_openslide_cache_entry) cache_entry = NULL;
+
+    _openslide_slice box = {
+            .p = tile_pixels,
+            .len = tw * th * 4
+    };
+
+    // clip, if necessary
+    if (!_openslide_clip_tile(box.p,
+                              tw, th,
+                              level->base.w - tile_col * tw,
+                              level->base.h - tile_row * th,
+                              NULL)) {
+        // TODO(avirodov): what happens here???
+    }
+
+    // put it in the cache
+    tile_pixels = _openslide_slice_steal(&box);
+    _openslide_cache_put(tmp_global_osr->cache, &level->base, tile_col, tile_row,
+                         tile_pixels, tw * th * 4,
+                         &cache_entry);
+}
+
+
 static void isyntax_init_dummy_codeblocks(isyntax_t* isyntax) {
     // Blocks with 'background' coefficients, to use for filling in margins at the edges (in case the neighboring codeblock doesn't exist)
     if (!isyntax->black_dummy_coeff) {
@@ -66,6 +112,11 @@ static bool philips_isyntax_read_tile(
         GError **err) {
     isyntax_t *data = osr->data;
     philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
+
+    if (!data->images[level->image_idx].first_load_complete) {
+        tmp_global_osr = osr;
+        isyntax_do_first_load(/*resource_id=*/0, data, &data->images[level->image_idx]);
+    }
 
     LOG("level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
     // tile size
@@ -154,7 +205,6 @@ static bool philips_isyntax_open(
     bool open_result = isyntax_open(data, filename);
     LOG_VAR("%d", (int)open_result);
     LOG_VAR("%d", data->image_count);
-    isyntax_init_dummy_codeblocks(data);
 
     // Find wsi image. Extracting other images not supported. Assuming only one wsi.
     int wsi_image_idx = data->wsi_image_index;

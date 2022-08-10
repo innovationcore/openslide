@@ -17,31 +17,38 @@
 */
 
 #include "common.h"
-#include "viewer.h"
+#include "isyntax.h"
+#include "intrinsics.h"
+bool32 is_tile_streamer_frame_boundary_passed = false;
+bool32 is_tile_stream_task_in_progress = false;
 
-void submit_tile_completed(i32 resource_id, void* tile_pixels, i32 scale, i32 tile_index, i32 tile_width, i32 tile_height) {
-
-#if USE_MULTIPLE_OPENGL_CONTEXTS
-	image_t* image = &global_app_state.loaded_images[global_app_state.displayed_image]; // TODO: refactor: do something less ugly and dangerous than this
-	if (image) {
-		upload_tile_on_worker_thread(image, tile_pixels, scale, tile_index, tile_width, tile_height);
-	}
-#else
-	viewer_notify_tile_completed_task_t completion_task = {0};
-	completion_task.pixel_memory = (u8*)tile_pixels;
-	completion_task.tile_width = tile_width;
-	completion_task.tile_height = tile_height;
-	completion_task.scale = scale;
-	completion_task.tile_index = tile_index;
-	completion_task.want_gpu_residency = true;
-	completion_task.resource_id = resource_id;
-	//	console_print("[thread %d] Loaded tile: level=%d tile_x=%d tile_y=%d\n", logical_thread_index, level, tile_x, tile_y);
-	if (!add_work_queue_entry(&global_completion_queue, viewer_notify_load_tile_completed, &completion_task, sizeof(completion_task))) {
-		ASSERT(!"tile cannot be submitted and will leak");
-	}
-#endif
-
+i32 tile_pos_from_world_pos(float world_pos, float tile_side) {
+    ASSERT(tile_side > 0);
+    float tile_float = (world_pos / tile_side);
+    float tile = (i32)floorf(tile_float);
+    return tile;
 }
+
+bounds2i world_bounds_to_tile_bounds(bounds2f* world_bounds, float tile_width, float tile_height, v2f image_pos) {
+    bounds2i result = {0};
+    result.left = tile_pos_from_world_pos(world_bounds->left - image_pos.x, tile_width);
+    result.top = tile_pos_from_world_pos(world_bounds->top - image_pos.y, tile_height);
+    result.right = tile_pos_from_world_pos(world_bounds->right - image_pos.x, tile_width) + 1;
+    result.bottom = tile_pos_from_world_pos(world_bounds->bottom - image_pos.y, tile_height) + 1;
+    return result;
+}
+
+bounds2i clip_bounds2i(bounds2i a, bounds2i b) {
+    bounds2i result = {0};
+    result.left = MIN(b.right, MAX(a.left, b.left));
+    result.top = MIN(b.bottom, MAX(a.top, b.top));
+    result.right = MAX(b.left, MIN(a.right, b.right));
+    result.bottom = MAX(b.top, MIN(a.bottom, b.bottom));
+    return result;
+}
+
+
+void submit_tile_completed(i32 resource_id, void* tile_pixels, i32 scale, i32 tile_index, i32 tile_width, i32 tile_height);
 
 static void isyntax_init_dummy_codeblocks(isyntax_t* isyntax) {
 	// Blocks with 'background' coefficients, to use for filling in margins at the edges (in case the neighboring codeblock doesn't exist)
@@ -104,7 +111,7 @@ static i32 isyntax_load_all_tiles_in_level(i32 resource_id, isyntax_t* isyntax, 
 
 
 
-static void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi) {
+void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi) {
 
 	i64 start_first_load = get_clock();
 	i32 tiles_loaded = 0;
@@ -296,7 +303,7 @@ static void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_i
 		tiles_loaded += isyntax_load_all_tiles_in_level(resource_id, isyntax, wsi, scale);
 	}
 
-	console_print("   iSyntax: loading the first %d tiles took %g seconds\n", tiles_loaded, get_seconds_elapsed(start_first_load, get_clock()));
+	console_print("   iSyntax: loading the first %d tiles took %d seconds\n", tiles_loaded, get_seconds_elapsed(start_first_load, get_clock()));
 //	console_print("   total RGB transform time: %g seconds\n", total_rgb_transform_time);
 
 	i32 blocks_freed = 0;

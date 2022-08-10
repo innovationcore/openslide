@@ -9,7 +9,6 @@ pkgconfig_DATA = openslide.pc
 
 ACLOCAL_AMFLAGS=-I m4
 
-
 lib_LTLIBRARIES = src/libopenslide.la
 
 src_libopenslide_la_LIBADD = $(GLIB2_LIBS) $(CAIRO_LIBS) $(SQLITE3_LIBS) \
@@ -18,9 +17,11 @@ src_libopenslide_la_LIBADD = $(GLIB2_LIBS) $(CAIRO_LIBS) $(SQLITE3_LIBS) \
 
 src_libopenslide_la_SOURCES = \
 	src/isyntax.c \
+	src/isyntax_streamer.c \
 	src/yxml.c \
 	src/linux_utils.c \
 	src/platform.c \
+	src/work_queue.c \
 	src/jpeg_decoder.c \
 	src/openslide.c \
 	src/openslide-cache.c \
