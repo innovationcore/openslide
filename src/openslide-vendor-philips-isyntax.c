@@ -65,9 +65,9 @@ static bool philips_isyntax_read_tile(
         void *arg,
         GError **err) {
     isyntax_t *data = osr->data;
-    philips_isyntax_level* level = osr_level;
+    philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
 
-    LOG("level=%d tile_col=%d tile_row=%d", level->level_idx, tile_col, tile_row);
+    LOG("level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
     // tile size
     int64_t tw = data->tile_width;
     int64_t th = data->tile_height;
@@ -91,7 +91,7 @@ static bool philips_isyntax_read_tile(
 //        }
 
 //        g_auto(_openslide_slice) box = _openslide_slice_alloc(tw * th * 4);
-        LOG("### isyntax_load_tile(x=%d, y=%d)", tile_col, tile_row);
+        LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
         u32* tile = isyntax_load_tile(
                 data,
                 &data->images[level->image_idx],
@@ -175,7 +175,7 @@ static bool philips_isyntax_open(
         level->base.h = levels[i].height_in_tiles * data->tile_height;
         level->base.tile_w = data->tile_width;
         level->base.tile_h = data->tile_height;
-        osr->levels[i] = level;
+        osr->levels[i] = (struct _openslide_level*)level;
         level->grid = _openslide_grid_create_simple(
                 osr,
                 levels[i].width_in_tiles,
@@ -194,7 +194,7 @@ static bool philips_isyntax_open(
         LOG_VAR("%f", levels[i].um_per_pixel_y);
         LOG_VAR("%f", levels[i].x_tile_side_in_um);
         LOG_VAR("%f", levels[i].y_tile_side_in_um);
-        LOG_VAR("%ld", levels[i].tile_count);
+        LOG_VAR("%lld", levels[i].tile_count);
         LOG_VAR("%f", levels[i].origin_offset_in_pixels);
         LOG_VAR("%f", levels[i].origin_offset.x);
         LOG_VAR("%f", levels[i].origin_offset.y);
@@ -212,9 +212,9 @@ static bool philips_isyntax_paint_region(
         int32_t w, int32_t h,
         GError **err) {
     isyntax_t *data = osr->data;
-    philips_isyntax_level* level = osr_level;
+    philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
 
-    LOG("x=%d y=%d level=%d w=%d h=%d", x, y, level->level_idx, w, h);
+    LOG("x=%ld y=%ld level=%d w=%d h=%d", x, y, level->level_idx, w, h);
     return _openslide_grid_paint_region(level->grid, cr, NULL,
                                         x / level->base.downsample,
                                         y / level->base.downsample,
@@ -225,7 +225,7 @@ static bool philips_isyntax_paint_region(
 static void philips_isyntax_destroy(openslide_t *osr) {
     isyntax_t *data = osr->data;
     for (int i = 0; i < osr->level_count; ++i) {
-        philips_isyntax_level* level = osr->levels[i];
+        philips_isyntax_level* level = (philips_isyntax_level*)osr->levels[i];
         _openslide_grid_destroy(level->grid);
         free(level);
     }

@@ -695,7 +695,7 @@ bool isyntax_parse_xml_header(isyntax_t* isyntax, char* xml_header, i64 chunk_le
                             old_char = parser->contentbuf[200];
                             parser->contentbuf[200] = 0;
                         }
-						console_print_verbose("%sDICOM: %-40s (0x%04x, 0x%04x), size:%-8u = %s\n", get_spaces(parser->node_stack_index),
+						console_print_verbose("%sDICOM: %-40s (0x%04x, 0x%04x), size:%-8lu = %s\n", get_spaces(parser->node_stack_index),
 						                      parser->current_dicom_attribute_name,
 						                      parser->current_dicom_group_tag, parser->current_dicom_element_tag,
 											  parser->contentlen, parser->contentbuf);
@@ -1802,7 +1802,7 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 	// Check that the serialized length is sane
 	if (serialized_length > 2 * coeff_buffer_size) {
 		ASSERT(!"serialized_length too large");
-		console_print_error("Error: isyntax_hulsken_decompress(): invalid codeblock, serialized_length too large (%d)\n", serialized_length);
+		console_print_error("Error: isyntax_hulsken_decompress(): invalid codeblock, serialized_length too large (%lld)\n", serialized_length);
 		memset(out_buffer, 0, coeff_buffer_size);
 		release_temp_memory(&temp_memory);
 		return false;
@@ -1835,7 +1835,8 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 		do {
 			if (bits_read >= block_size_in_bits) {
 				ASSERT(!"out of bounds");
-				console_print_error("Error: isyntax_hulsken_decompress(): invalid codeblock, Huffman table extends out of bounds (compressed_size=%d)\n", compressed_size);
+				console_print_error("Error: isyntax_hulsken_decompress(): invalid codeblock, Huffman table extends out "
+                                    "of bounds (compressed_size=%ld)\n", compressed_size);
 				memset(out_buffer, 0, coeff_buffer_size);
 				release_temp_memory(&temp_memory);
 				return false;
@@ -2041,7 +2042,7 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 
 	if (serialized_length != decompressed_length) {
 		ASSERT(!"size mismatch");
-		console_print("iSyntax: decompressed size mismatch (size=%d): expected %d observed %d\n",
+		console_print("iSyntax: decompressed size mismatch (size=%ld): expected %lld observed %d\n",
 				 compressed_size, serialized_length, decompressed_length);
 	}
 

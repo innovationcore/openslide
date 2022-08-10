@@ -223,12 +223,12 @@ typedef struct str_t {
 #endif
 #define ATLEAST(a, b) MAX(a, b)
 #define ATMOST(a, b) MIN(a, b)
-#define ABS(x) ((x) < 0 ? -(x) : (x))
+// #define ABS(x) ((x) < 0 ? -(x) : (x))
 
 #define LERP(t,a,b)               ( (a) + (t) * (float) ((b)-(a)) )
 #define UNLERP(t,a,b)             ( ((t) - (a)) / (float) ((b) - (a)) )
 
-#define CLAMP(x,xmin,xmax)  ((x) < (xmin) ? (xmin) : (x) > (xmax) ? (xmax) : (x))
+//#define CLAMP(x,xmin,xmax)  ((x) < (xmin) ? (xmin) : (x) > (xmax) ? (xmax) : (x))
 
 #define MACRO_VAR(name) concat(name, __LINE__)
 #define defer(start, end) for (int MACRO_VAR(_i_) = (start, 0); !MACRO_VAR(_i_); (MACRO_VAR(_i_)+=1,end))
