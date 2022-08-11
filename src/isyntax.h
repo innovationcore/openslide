@@ -329,69 +329,20 @@ void isyntax_decompress_codeblock_in_chunk(isyntax_codeblock_t* codeblock, i32 b
 i32 isyntax_get_chunk_codeblocks_per_color_for_level(i32 level, bool has_ll);
 
 // TODO: move this somewhere suitable
-typedef struct image_t {
-    char name[512];
-    char directory[512];
-    bool is_local; // i.e. not remote (accessed over network using client/server interface)
-//    image_type_enum type;
-//    image_backend_enum backend;
-    bool32 is_freshly_loaded; // TODO: remove or refactor, is this still needed?
-    union {
-//        simple_image_t simple;
-//        tiff_t tiff;
-        isyntax_t isyntax;
-//        struct {
-//            wsi_t wsi;
-//        } wsi;
-//        dicom_series_t dicom;
-    };
-    i32 level_count;
-    u32 tile_width;
-    u32 tile_height;
-    // level_image_t level_images[WSI_MAX_LEVELS];
-    float mpp_x;
-    float mpp_y;
-    bool is_mpp_known;
-    i64 width_in_pixels;
-    float width_in_um;
-    i64 height_in_pixels;
-    float height_in_um;
-    bool is_overlay;
-    v2f origin_offset;
-    // simple_image_t macro_image;
-    // simple_image_t label_image;
-    i32 resource_id;
-    bool is_valid;
-} image_t;
-
-typedef struct zoom_state_t {
-    float pos;
-    i32 level;
-    i32 notches;
-    float notch_size;
-    float pixel_width;
-    float pixel_height;
-    float screen_point_width;
-    float downsample_factor;
-    float base_pixel_width;
-    float base_pixel_height;
-} zoom_state_t;
-
-
 typedef struct tile_streamer_t {
-    image_t* image;
-    // scene_t* scene;
     v2f origin_offset;
     v2f camera_center;
     bounds2f camera_bounds;
-    bounds2f crop_bounds;
     bool is_cropped;
-    zoom_state_t zoom;
+    i32 zoom_level;
+    isyntax_t* isyntax;
+    i32 resource_id;
 } tile_streamer_t;
 
 void isyntax_begin_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi_image);
 void isyntax_begin_load_tile(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y);
 void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi);
+void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer, isyntax_t* isyntax);
 
 #ifdef __cplusplus
 }

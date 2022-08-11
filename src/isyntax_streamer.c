@@ -594,7 +594,7 @@ bool isyntax_load_next_level_greedily = false;
 
 void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer, isyntax_t* isyntax) {
 	isyntax_image_t* wsi = isyntax->images + isyntax->wsi_image_index;
-	i32 resource_id = tile_streamer->image->resource_id;
+	i32 resource_id = tile_streamer->resource_id;
 
 	i64 clock_start = get_clock();
 	i32 tiles_loaded = 0;
@@ -609,14 +609,14 @@ void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer, isyntax_t* isynt
 		ASSERT(wsi->level_count >= 0);
 
 		i32 highest_visible_scale = ATLEAST(wsi->max_scale, 0);
-		i32 lowest_visible_scale = ATLEAST(tile_streamer->zoom.level, 0);
+		i32 lowest_visible_scale = ATLEAST(tile_streamer->zoom_level, 0);
 		lowest_visible_scale = ATMOST(highest_visible_scale, lowest_visible_scale);
 
 		i32 lowest_scale_to_preload = lowest_visible_scale;
 		if (isyntax_load_next_level_greedily) {
 			// If enabled, try to load not only the visible level, but one extra lower level
 			// (This may be more resource intensive but also (maybe) give faster apparent loading times)
-			lowest_scale_to_preload = ATLEAST(ATMOST(tile_streamer->zoom.level, 5), 0);
+			lowest_scale_to_preload = ATLEAST(ATMOST(tile_streamer->zoom_level, 5), 0);
 			lowest_visible_scale = ATMOST(lowest_scale_to_preload, lowest_visible_scale);
 		}
 
@@ -1054,7 +1054,7 @@ void isyntax_stream_image_tiles_func(i32 logical_thread_index, void* userdata) {
 		tile_streamer = (tile_streamer_t*) userdata;
 		if (tile_streamer) {
 			tile_streamer_t tile_streamer_copy = *tile_streamer; // original may be updated next frame
-			isyntax_stream_image_tiles(&tile_streamer_copy, &tile_streamer->image->isyntax);
+			isyntax_stream_image_tiles(&tile_streamer_copy, &tile_streamer->isyntax);
 		}
 		need_repeat = is_tile_streamer_frame_boundary_passed;
 		if (need_repeat) {
@@ -1062,13 +1062,13 @@ void isyntax_stream_image_tiles_func(i32 logical_thread_index, void* userdata) {
 		}
 	} while (need_repeat);
 	is_tile_stream_task_in_progress = false;
-	atomic_decrement(&tile_streamer->image->isyntax.refcount); // release
+	atomic_decrement(&tile_streamer->isyntax->refcount); // release
 }
 
 void isyntax_begin_stream_image_tiles(tile_streamer_t* tile_streamer) {
 
 	if (!is_tile_stream_task_in_progress) {
-		atomic_increment(&tile_streamer->image->isyntax.refcount); // retain; don't destroy isyntax while busy
+		atomic_increment(&tile_streamer->isyntax->refcount); // retain; don't destroy isyntax while busy
 		is_tile_stream_task_in_progress = true;
 		add_work_queue_entry(&global_work_queue, isyntax_stream_image_tiles_func, tile_streamer, sizeof(*tile_streamer));
 	} else {

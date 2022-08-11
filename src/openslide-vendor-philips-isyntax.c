@@ -20,7 +20,7 @@ static const struct _openslide_ops philips_isyntax_ops;
 typedef struct philips_isyntax_level {
     struct _openslide_level base;
     int image_idx;
-    int level_idx;
+    int level_idx; // TODO(avirodov): proper pointer to level, use level->scale when index needed.
     struct _openslide_grid *grid;
 } philips_isyntax_level;
 
@@ -64,6 +64,8 @@ void submit_tile_completed(
 
     // put it in the cache
     tile_pixels = _openslide_slice_steal(&box);
+    // TODO(avirodov): assert it is not in cache, or have a better cache management.
+    //  Otherwise leaking memory here.
     _openslide_cache_put(tmp_global_osr->cache, &level->base, tile_col, tile_row,
                          tile_pixels, tw * th * 4,
                          &cache_entry);
@@ -129,49 +131,41 @@ static bool philips_isyntax_read_tile(
                                               level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
-//        // slides with multiple ROIs are sparse
-//        bool is_missing;
-//        if (!_openslide_tiff_check_missing_tile(tiffl, tiff,
-//                                                tile_col, tile_row,
-//                                                &is_missing, err)) {
-//            return false;
-//        }
-//        if (is_missing) {
-//            // nothing to draw
-//            return true;
-//        }
-
-//        g_auto(_openslide_slice) box = _openslide_slice_alloc(tw * th * 4);
         LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
-        u32* tile = isyntax_load_tile(
-                data,
-                &data->images[level->image_idx],
-                level->level_idx, tile_col, tile_row);
-        _openslide_slice box = {
-                .p = tile,
-                .len = tw * th * 4
+        isyntax_level_t* stream_level = &data->images[level->image_idx].levels[level->level_idx];
+        i32 px_offset_x = 100;
+        i32 px_offset_y = 200;
+        float um_offset_x = px_offset_x * stream_level->um_per_pixel_x;
+        float um_offset_y = px_offset_y * stream_level->um_per_pixel_y;
+        bounds2f camera_bounds = {
+                .left = tile_col * stream_level->x_tile_side_in_um + um_offset_x,
+                .right = (tile_col + 1) * stream_level->x_tile_side_in_um + um_offset_x,
+                .top = tile_row * stream_level->y_tile_side_in_um + um_offset_y,
+                .bottom = (tile_row+1) * stream_level->y_tile_side_in_um + um_offset_y,
         };
-
-        if (!tile) {
-            g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                        "isyntax_load_tile failed");
-            return false;
-        }
-
-        // clip, if necessary
-        if (!_openslide_clip_tile(box.p,
-                                  tw, th,
-                                  level->base.w - tile_col * tw,
-                                  level->base.h - tile_row * th,
-                                  err)) {
-            return false;
-        }
-
-        // put it in the cache
-        tiledata = _openslide_slice_steal(&box);
-        _openslide_cache_put(osr->cache, osr_level, tile_col, tile_row,
-                             tiledata, tw * th * 4,
-                             &cache_entry);
+        tile_streamer_t tile_streamer = {
+                .origin_offset = {
+                        //-stream_level->origin_offset.x,
+                        //-stream_level->origin_offset.y
+                        0, 0
+                },
+                .camera_center = {
+                        (camera_bounds.left + camera_bounds.right) / 2.0f,
+                        (camera_bounds.top + camera_bounds.bottom) / 2.0f
+                },
+                .camera_bounds = camera_bounds,
+                .is_cropped = false,
+                .zoom_level = level->level_idx,
+                .isyntax = data, // TODO(avirodov): passing isyntax twice.
+                .resource_id = 0,
+        };
+        isyntax_stream_image_tiles(&tile_streamer, tile_streamer.isyntax);
+        // TODO(avirodov): assuming the streamer is hacked for immediate callback
+        //   execution. Otherwise need to wait here.
+        tiledata = _openslide_cache_get(osr->cache,
+                                        level, tile_col, tile_row,
+                                        &cache_entry);
+        g_assert(tiledata != NULL);
     }
 
     // draw it
