@@ -120,7 +120,7 @@ static bool philips_isyntax_read_tile(
         isyntax_do_first_load(/*resource_id=*/0, data, &data->images[level->image_idx]);
     }
 
-    LOG("level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
+    // LOG("level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
     // tile size
     int64_t tw = data->tile_width;
     int64_t th = data->tile_height;
@@ -133,8 +133,8 @@ static bool philips_isyntax_read_tile(
     if (!tiledata) {
         LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
         isyntax_level_t* stream_level = &data->images[level->image_idx].levels[level->level_idx];
-        i32 px_offset_x = 100;
-        i32 px_offset_y = 200;
+        i32 px_offset_x = 0;
+        i32 px_offset_y = 0;
         float um_offset_x = px_offset_x * stream_level->um_per_pixel_x;
         float um_offset_y = px_offset_y * stream_level->um_per_pixel_y;
         bounds2f camera_bounds = {
@@ -258,7 +258,7 @@ static bool philips_isyntax_paint_region(
     isyntax_t *data = osr->data;
     philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
 
-    LOG("x=%ld y=%ld level=%d w=%d h=%d", x, y, level->level_idx, w, h);
+    // LOG("x=%ld y=%ld level=%d w=%d h=%d", x, y, level->level_idx, w, h);
     return _openslide_grid_paint_region(level->grid, cr, NULL,
                                         x / level->base.downsample,
                                         y / level->base.downsample,

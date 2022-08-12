@@ -1,0 +1,8 @@
+extracted-image-data/*
+
+# Those files are too large to be checked in.
+# TODO(avirodov): need a better solution. Can piggyback on Openslide's download capability.
+golden-image-data/testslide.isyntax
+golden-image-data/testslide.tiff
+golden-image-data/testslide_0_0_37376_73216_3.png
+golden-image-data/testslide_0_0_37376_73216_4.png
