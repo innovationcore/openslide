@@ -39,7 +39,7 @@ RUN apt-get update \
 	  libxml2-dev libsqlite3-dev libsdl2-dev \
   && apt-get clean
 
-RUN pip install openslide-python traceback numpy
+RUN pip install openslide-python traceback numpy opencv-python
 
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen
