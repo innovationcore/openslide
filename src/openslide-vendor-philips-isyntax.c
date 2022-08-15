@@ -19,8 +19,7 @@ static const struct _openslide_ops philips_isyntax_ops;
 
 typedef struct philips_isyntax_level {
     struct _openslide_level base;
-    int image_idx;
-    int level_idx; // TODO(avirodov): proper pointer to level, use level->scale when index needed.
+    isyntax_level_t* isyntax_level;
     struct _openslide_grid *grid;
 } philips_isyntax_level;
 
@@ -32,16 +31,17 @@ void submit_tile_completed(
         i32 tile_width,
         i32 tile_height) {
     openslide_t *osr = (openslide_t*)userdata;
-    isyntax_t *data = osr->data;
-    philips_isyntax_level* level = (philips_isyntax_level*)osr->levels[scale];
+    isyntax_t *isyntax = osr->data;
+    philips_isyntax_level* pi_level = (philips_isyntax_level*)osr->levels[scale];
+    isyntax_image_t* wsi_image = &isyntax->images[isyntax->wsi_image_index];
 
-    i32 width = data->images[level->image_idx].levels[level->level_idx].width_in_tiles;
+    i32 width = pi_level->isyntax_level->width_in_tiles;
     i32 tile_col = tile_index % width;
     i32 tile_row = tile_index / width;
-    LOG("### level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
+    LOG("### level=%d tile_col=%ld tile_row=%ld", pi_level->isyntax_level->scale, tile_col, tile_row);
     // tile size
-    int64_t tw = data->tile_width;
-    int64_t th = data->tile_height;
+    int64_t tw = isyntax->tile_width;
+    int64_t th = isyntax->tile_height;
 
     // cache
     g_autoptr(_openslide_cache_entry) cache_entry = NULL;
@@ -54,8 +54,8 @@ void submit_tile_completed(
     // clip, if necessary
     if (!_openslide_clip_tile(box.p,
                               tw, th,
-                              level->base.w - tile_col * tw,
-                              level->base.h - tile_row * th,
+                              pi_level->base.w - tile_col * tw,
+                              pi_level->base.h - tile_row * th,
                               NULL)) {
         // TODO(avirodov): what happens here???
     }
@@ -64,10 +64,10 @@ void submit_tile_completed(
     tile_pixels = _openslide_slice_steal(&box);
 
     uint32_t *tiledata = _openslide_cache_get(osr->cache,
-                                              level, tile_col, tile_row,
+                                              pi_level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
-        _openslide_cache_put(osr->cache, &level->base, tile_col, tile_row,
+        _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
                              tile_pixels, tw * th * 4,
                              &cache_entry);
     } else {
@@ -102,26 +102,27 @@ static bool philips_isyntax_read_tile(
         int64_t tile_col, int64_t tile_row,
         void *arg,
         GError **err) {
-    isyntax_t *data = osr->data;
-    philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
+    isyntax_t *isyntax = osr->data;
+    philips_isyntax_level* pi_level = (philips_isyntax_level*)osr_level;
+    isyntax_image_t* wsi_image = &isyntax->images[isyntax->wsi_image_index];
 
-    if (!data->images[level->image_idx].first_load_complete) {
-        isyntax_do_first_load(osr, data, &data->images[level->image_idx]);
+    if (!wsi_image->first_load_complete) {
+        isyntax_do_first_load(osr, isyntax, wsi_image);
     }
 
-    // LOG("level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
+    // LOG("level=%d tile_col=%ld tile_row=%ld", pi_level->level_idx, tile_col, tile_row);
     // tile size
-    int64_t tw = data->tile_width;
-    int64_t th = data->tile_height;
+    int64_t tw = isyntax->tile_width;
+    int64_t th = isyntax->tile_height;
 
     // cache
     g_autoptr(_openslide_cache_entry) cache_entry = NULL;
     uint32_t *tiledata = _openslide_cache_get(osr->cache,
-                                              level, tile_col, tile_row,
+                                              pi_level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
         LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
-        isyntax_level_t* stream_level = &data->images[level->image_idx].levels[level->level_idx];
+        isyntax_level_t* stream_level = pi_level->isyntax_level;
         i32 px_offset_x = 0;
         i32 px_offset_y = 0;
         float um_offset_x = px_offset_x * stream_level->um_per_pixel_x;
@@ -134,8 +135,8 @@ static bool philips_isyntax_read_tile(
         };
         tile_streamer_t tile_streamer = {
                 .origin_offset = {
-                        //-stream_level->origin_offset.x,
-                        //-stream_level->origin_offset.y
+                        //-pi_level->origin_offset.x,
+                        //-pi_level->origin_offset.y
                         0, 0
                 },
                 .camera_center = {
@@ -144,15 +145,15 @@ static bool philips_isyntax_read_tile(
                 },
                 .camera_bounds = camera_bounds,
                 .is_cropped = false,
-                .zoom_level = level->level_idx,
-                .isyntax = data,
+                .zoom_level = pi_level->isyntax_level->scale,
+                .isyntax = isyntax,
                 .userdata = osr,
         };
         isyntax_stream_image_tiles(&tile_streamer);
         // TODO(avirodov): assuming the streamer is hacked for immediate callback
         //   execution. Otherwise need to wait here.
         tiledata = _openslide_cache_get(osr->cache,
-                                        level, tile_col, tile_row,
+                                        pi_level, tile_col, tile_row,
                                         &cache_entry);
         // If there is no tiledata, it is because the tile doesn't exist in the .isyntax file (empty tiles are not
         // stored). Fill with background.
@@ -163,7 +164,7 @@ static bool philips_isyntax_read_tile(
             tiledata = malloc(tw * th * 4);
             memset(tiledata, 255, tw * th * 4);
 
-            _openslide_cache_put(osr->cache, &level->base, tile_col, tile_row,
+            _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
                                  tiledata, tw * th * 4,
                                  &cache_entry);
         }
@@ -213,8 +214,7 @@ static bool philips_isyntax_open(
     osr->level_count = wsi_image->level_count;
     for (int i = 0; i < wsi_image->level_count; ++i) {
         philips_isyntax_level* level = malloc(sizeof(philips_isyntax_level));
-        level->level_idx = i;
-        level->image_idx = wsi_image_idx;
+        level->isyntax_level = &wsi_image->levels[i];
         level->base.downsample = levels[i].downsample_factor;
         level->base.w = levels[i].width_in_tiles * data->tile_width;
         level->base.h = levels[i].height_in_tiles * data->tile_height;
