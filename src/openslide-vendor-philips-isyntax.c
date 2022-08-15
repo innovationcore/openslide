@@ -131,6 +131,8 @@ static bool philips_isyntax_read_tile(
                                               level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
+        // TODO(avirodov): the insyntax.c code asserts if tiles loaded more than once. But OpenSlide cache can (and
+        //  should) eventually evict. Need testscase for this.
         LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
         isyntax_level_t* stream_level = &data->images[level->image_idx].levels[level->level_idx];
         i32 px_offset_x = 0;
@@ -165,7 +167,15 @@ static bool philips_isyntax_read_tile(
         tiledata = _openslide_cache_get(osr->cache,
                                         level, tile_col, tile_row,
                                         &cache_entry);
-        g_assert(tiledata != NULL);
+        // If there is no tiledata, it is because the tile doesn't exist in the .isyntax file (empty tiles are not
+        // stored). Fill with background.
+        // TODO(avirodov): it may be possible the cache failed to fill for other reasons. Would be nice to know
+        //  specifically that this is due tile->exists == false.
+        if (tiledata == NULL) {
+            LOG("missing tile e(x=%ld, y=%ld), filling with background.", tile_col, tile_row);
+            tiledata = malloc(tw * th * 4);
+            memset(tiledata, 255, tw * th * 4);
+        }
     }
 
     // draw it
