@@ -1,0 +1,1 @@
+LD_LIBRARY_PATH=/home/user/openslide/build/src/.libs valgrind --tool=memcheck  --leak-check=full --track-origins=yes /home/user/openslide/build/tools/.libs/openslide-write-png /home/user/openslide/test/cases/philips-isyntax/golden-image-data/deident.isyntax 0 0 5 1024 1024 /home/user/openslide/test/cases/philips-isyntax/extracted-image-data/output.png

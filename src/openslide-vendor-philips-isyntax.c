@@ -137,11 +137,7 @@ static bool philips_isyntax_read_tile(
                                               level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
-        // TODO(avirodov): the insyntax.c code asserts if tiles loaded more than once. But OpenSlide cache can (and
-        //  should) eventually evict. Need testscase for this.
-        LOG("### isyntax_load_tile(x=%ld, y=%ld) openslide_cache->size=%ld isyntax->allocator->size=%ld",
-            tile_col, tile_row, /*_openslide_cache_get_total_size(osr->cache)*/0,
-            data->h_coeff_block_allocator.chunk_count + data->ll_coeff_block_allocator.chunk_count);
+        LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
         isyntax_level_t* stream_level = &data->images[level->image_idx].levels[level->level_idx];
         i32 px_offset_x = 0;
         i32 px_offset_y = 0;
