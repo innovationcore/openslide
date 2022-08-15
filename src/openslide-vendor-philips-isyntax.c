@@ -24,18 +24,16 @@ typedef struct philips_isyntax_level {
     struct _openslide_grid *grid;
 } philips_isyntax_level;
 
-// TODO(avirodov): un-hack this and properly pass around (maybe via resource_id, or change api).
-static openslide_t *tmp_global_osr;
-
 void submit_tile_completed(
-        i32 resource_id,
+        void* userdata,
         void* tile_pixels,
         i32 scale,
         i32 tile_index,
         i32 tile_width,
         i32 tile_height) {
-    isyntax_t *data = tmp_global_osr->data;
-    philips_isyntax_level* level = (philips_isyntax_level*)tmp_global_osr->levels[scale];
+    openslide_t *osr = (openslide_t*)userdata;
+    isyntax_t *data = osr->data;
+    philips_isyntax_level* level = (philips_isyntax_level*)osr->levels[scale];
 
     i32 width = data->images[level->image_idx].levels[level->level_idx].width_in_tiles;
     i32 tile_col = tile_index % width;
@@ -65,29 +63,15 @@ void submit_tile_completed(
     // put it in the cache
     tile_pixels = _openslide_slice_steal(&box);
 
-    uint32_t *tiledata = _openslide_cache_get(tmp_global_osr->cache,
+    uint32_t *tiledata = _openslide_cache_get(osr->cache,
                                               level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
-        _openslide_cache_put(tmp_global_osr->cache, &level->base, tile_col, tile_row,
+        _openslide_cache_put(osr->cache, &level->base, tile_col, tile_row,
                              tile_pixels, tw * th * 4,
                              &cache_entry);
     } else {
         free(tile_pixels);
-    }
-}
-
-
-static void isyntax_init_dummy_codeblocks(isyntax_t* isyntax) {
-    // Blocks with 'background' coefficients, to use for filling in margins at the edges (in case the neighboring codeblock doesn't exist)
-    if (!isyntax->black_dummy_coeff) {
-        isyntax->black_dummy_coeff = (icoeff_t*)calloc(1, isyntax->block_width * isyntax->block_height * sizeof(icoeff_t));
-    }
-    if (!isyntax->white_dummy_coeff) {
-        isyntax->white_dummy_coeff = (icoeff_t*)malloc(isyntax->block_width * isyntax->block_height * sizeof(icoeff_t));
-        for (i32 i = 0; i < isyntax->block_width * isyntax->block_height; ++i) {
-            isyntax->white_dummy_coeff[i] = 255;
-        }
     }
 }
 
@@ -120,11 +104,6 @@ static bool philips_isyntax_read_tile(
         GError **err) {
     isyntax_t *data = osr->data;
     philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
-
-    if (!data->images[level->image_idx].first_load_complete) {
-        tmp_global_osr = osr;
-        isyntax_do_first_load(/*resource_id=*/0, data, &data->images[level->image_idx]);
-    }
 
     // LOG("level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
     // tile size
@@ -162,10 +141,10 @@ static bool philips_isyntax_read_tile(
                 .camera_bounds = camera_bounds,
                 .is_cropped = false,
                 .zoom_level = level->level_idx,
-                .isyntax = data, // TODO(avirodov): passing isyntax twice.
-                .resource_id = 0,
+                .isyntax = data,
+                .userdata = osr,
         };
-        isyntax_stream_image_tiles(&tile_streamer, tile_streamer.isyntax);
+        isyntax_stream_image_tiles(&tile_streamer);
         // TODO(avirodov): assuming the streamer is hacked for immediate callback
         //   execution. Otherwise need to wait here.
         tiledata = _openslide_cache_get(osr->cache,
@@ -180,7 +159,7 @@ static bool philips_isyntax_read_tile(
             tiledata = malloc(tw * th * 4);
             memset(tiledata, 255, tw * th * 4);
 
-            _openslide_cache_put(tmp_global_osr->cache, &level->base, tile_col, tile_row,
+            _openslide_cache_put(osr->cache, &level->base, tile_col, tile_row,
                                  tiledata, tw * th * 4,
                                  &cache_entry);
         }

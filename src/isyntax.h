@@ -336,13 +336,13 @@ typedef struct tile_streamer_t {
     bool is_cropped;
     i32 zoom_level;
     isyntax_t* isyntax;
-    i32 resource_id;
+    void* userdata;
 } tile_streamer_t;
 
-void isyntax_begin_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi_image);
-void isyntax_begin_load_tile(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y);
-void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi);
-void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer, isyntax_t* isyntax);
+void isyntax_begin_first_load(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi_image);
+void isyntax_begin_load_tile(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y);
+void isyntax_do_first_load(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi);
+void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer);
 
 #ifdef __cplusplus
 }

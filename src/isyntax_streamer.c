@@ -48,7 +48,7 @@ bounds2i clip_bounds2i(bounds2i a, bounds2i b) {
 }
 
 
-void submit_tile_completed(i32 resource_id, void* tile_pixels, i32 scale, i32 tile_index, i32 tile_width, i32 tile_height);
+void submit_tile_completed(void* userdata, void* tile_pixels, i32 scale, i32 tile_index, i32 tile_width, i32 tile_height);
 
 static void isyntax_init_dummy_codeblocks(isyntax_t* isyntax) {
 	// Blocks with 'background' coefficients, to use for filling in margins at the edges (in case the neighboring codeblock doesn't exist)
@@ -63,7 +63,7 @@ static void isyntax_init_dummy_codeblocks(isyntax_t* isyntax) {
 	}
 }
 
-static i32 isyntax_load_all_tiles_in_level(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale) {
+static i32 isyntax_load_all_tiles_in_level(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale) {
 	i32 tiles_loaded = 0;
 	i32 tile_index = 0;
 	isyntax_level_t* level = wsi->levels + scale;
@@ -73,11 +73,11 @@ static i32 isyntax_load_all_tiles_in_level(i32 resource_id, isyntax_t* isyntax, 
 			if (!tile->exists) continue;
 			i32 tasks_waiting = get_work_queue_task_count(&global_work_queue);
 			if (global_worker_thread_idle_count > 0 && tasks_waiting < logical_cpu_count * 10) {
-				isyntax_begin_load_tile(resource_id, isyntax, wsi, scale, tile_x, tile_y);
+				isyntax_begin_load_tile(userdata, isyntax, wsi, scale, tile_x, tile_y);
 			} else if (!is_tile_streamer_frame_boundary_passed) {
 				u32* tile_pixels = isyntax_load_tile(isyntax, wsi, scale, tile_x, tile_y);
 				if (tile_pixels) {
-					submit_tile_completed(resource_id, tile_pixels, scale, tile_index, isyntax->tile_width, isyntax->tile_height);
+					submit_tile_completed(userdata, tile_pixels, scale, tile_index, isyntax->tile_width, isyntax->tile_height);
 				}
 			}
 			++tiles_loaded;
@@ -111,7 +111,7 @@ static i32 isyntax_load_all_tiles_in_level(i32 resource_id, isyntax_t* isyntax, 
 
 
 
-void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi) {
+void isyntax_do_first_load(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi) {
 
 	i64 start_first_load = get_clock();
 	i32 tiles_loaded = 0;
@@ -195,7 +195,7 @@ void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t*
 	}
 
 	// Transform and submit the top level tiles
-	tiles_loaded += isyntax_load_all_tiles_in_level(resource_id, isyntax, wsi, scale);
+	tiles_loaded += isyntax_load_all_tiles_in_level(userdata, isyntax, wsi, scale);
 
 	// Decompress and transform the remaining levels in the data chunks.
 	if (levels_in_chunk >= 2) {
@@ -247,7 +247,7 @@ void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t*
 			}
 		}
 		// Now do the inverse wavelet transforms
-		tiles_loaded += isyntax_load_all_tiles_in_level(resource_id, isyntax, wsi, scale);
+		tiles_loaded += isyntax_load_all_tiles_in_level(userdata, isyntax, wsi, scale);
 	}
 
 	// Now for the next level down (if present in the chunk)
@@ -300,7 +300,7 @@ void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t*
 			}
 		}
 		// Now do the inverse wavelet transforms
-		tiles_loaded += isyntax_load_all_tiles_in_level(resource_id, isyntax, wsi, scale);
+		tiles_loaded += isyntax_load_all_tiles_in_level(userdata, isyntax, wsi, scale);
 	}
 
 	console_print("   iSyntax: loading the first %d tiles took %d seconds\n", tiles_loaded, get_seconds_elapsed(start_first_load, get_clock()));
@@ -331,7 +331,7 @@ void isyntax_do_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t*
 }
 
 typedef struct isyntax_load_tile_task_t {
-	i32 resource_id;
+	void* userdata;
 	isyntax_t* isyntax;
 	isyntax_image_t* wsi;
 	i32 scale;
@@ -344,18 +344,18 @@ void isyntax_load_tile_task_func(i32 logical_thread_index, void* userdata) {
 	isyntax_load_tile_task_t* task = (isyntax_load_tile_task_t*) userdata;
 	u32* tile_pixels = isyntax_load_tile(task->isyntax, task->wsi, task->scale, task->tile_x, task->tile_y);
 	if (tile_pixels) {
-		submit_tile_completed(task->resource_id, tile_pixels, task->scale, task->tile_index, task->isyntax->tile_width, task->isyntax->tile_height);
+		submit_tile_completed(task->userdata, tile_pixels, task->scale, task->tile_index, task->isyntax->tile_width, task->isyntax->tile_height);
 	}
 	atomic_decrement(&task->isyntax->refcount); // release
 }
 
-void isyntax_begin_load_tile(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y) {
+void isyntax_begin_load_tile(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y) {
 	isyntax_level_t* level = wsi->levels + scale;
 	i32 tile_index = tile_y * level->width_in_tiles + tile_x;
 	isyntax_tile_t* tile = level->tiles + tile_index;
 	if (!tile->is_submitted_for_loading) {
 		isyntax_load_tile_task_t task = {0};
-		task.resource_id = resource_id;
+		task.userdata = userdata;
 		task.isyntax = isyntax;
 		task.wsi = wsi;
 		task.scale = scale;
@@ -374,20 +374,20 @@ void isyntax_begin_load_tile(i32 resource_id, isyntax_t* isyntax, isyntax_image_
 }
 
 typedef struct isyntax_first_load_task_t {
-	i32 resource_id;
+	void* userdata;
 	isyntax_t* isyntax;
 	isyntax_image_t* wsi;
 } isyntax_first_load_task_t;
 
 void isyntax_first_load_task_func(i32 logical_thread_index, void* userdata) {
 	isyntax_first_load_task_t* task = (isyntax_first_load_task_t*) userdata;
-	isyntax_do_first_load(task->resource_id, task->isyntax, task->wsi);
+	isyntax_do_first_load(task->userdata, task->isyntax, task->wsi);
 	atomic_decrement(&task->isyntax->refcount); // release
 }
 
-void isyntax_begin_first_load(i32 resource_id, isyntax_t* isyntax, isyntax_image_t* wsi_image) {
+void isyntax_begin_first_load(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi_image) {
 	isyntax_first_load_task_t task = {0};
-	task.resource_id = resource_id;
+	task.userdata = userdata;
 	task.isyntax = isyntax;
 	task.wsi = wsi_image;
 	atomic_increment(&isyntax->refcount); // retain; don't destroy isyntax while busy
@@ -592,16 +592,17 @@ void isyntax_mark_tile_for_full_loading_and_set_adjacent_requirements(isyntax_lo
 
 bool isyntax_load_next_level_greedily = false;
 
-void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer, isyntax_t* isyntax) {
-	isyntax_image_t* wsi = isyntax->images + isyntax->wsi_image_index;
-	i32 resource_id = tile_streamer->resource_id;
+void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer) {
+	isyntax_image_t* wsi = tile_streamer->isyntax->images + tile_streamer->isyntax->wsi_image_index;
+	void* const userdata = tile_streamer->userdata;
+    isyntax_t* const isyntax = tile_streamer->isyntax;
 
 	i64 clock_start = get_clock();
 	i32 tiles_loaded = 0;
 
 
 	if (!wsi->first_load_complete) {
-		isyntax_begin_first_load(resource_id, isyntax, wsi);
+		isyntax_begin_first_load(userdata, tile_streamer->isyntax, wsi);
 	} else for (i32 iteration = 0; iteration < 3; ++iteration) {
 		arena_t* arena = &local_thread_memory->temp_arena;
 		temp_memory_t temp_memory = begin_temp_memory(arena);
@@ -1014,7 +1015,7 @@ void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer, isyntax_t* isynt
 							++tiles_loaded;
 
 							// All the prerequisites have been met, we should be able to load this tile
-							isyntax_begin_load_tile(resource_id, isyntax, wsi, scale, tile_x, tile_y);
+							isyntax_begin_load_tile(userdata, isyntax, wsi, scale, tile_x, tile_y);
 
 							if (is_tile_streamer_frame_boundary_passed) {
 								goto break_out_of_loop2; // camera bounds updated, recalculate
@@ -1054,7 +1055,7 @@ void isyntax_stream_image_tiles_func(i32 logical_thread_index, void* userdata) {
 		tile_streamer = (tile_streamer_t*) userdata;
 		if (tile_streamer) {
 			tile_streamer_t tile_streamer_copy = *tile_streamer; // original may be updated next frame
-			isyntax_stream_image_tiles(&tile_streamer_copy, &tile_streamer->isyntax);
+			isyntax_stream_image_tiles(&tile_streamer_copy);
 		}
 		need_repeat = is_tile_streamer_frame_boundary_passed;
 		if (need_repeat) {
