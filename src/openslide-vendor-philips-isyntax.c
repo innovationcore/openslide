@@ -105,6 +105,10 @@ static bool philips_isyntax_read_tile(
     isyntax_t *data = osr->data;
     philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
 
+    if (!data->images[level->image_idx].first_load_complete) {
+        isyntax_do_first_load(osr, data, &data->images[level->image_idx]);
+    }
+
     // LOG("level=%d tile_col=%ld tile_row=%ld", level->level_idx, tile_col, tile_row);
     // tile size
     int64_t tw = data->tile_width;
