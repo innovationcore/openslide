@@ -64,11 +64,17 @@ void submit_tile_completed(
 
     // put it in the cache
     tile_pixels = _openslide_slice_steal(&box);
-    // TODO(avirodov): assert it is not in cache, or have a better cache management.
-    //  Otherwise leaking memory here.
-    _openslide_cache_put(tmp_global_osr->cache, &level->base, tile_col, tile_row,
-                         tile_pixels, tw * th * 4,
-                         &cache_entry);
+
+    uint32_t *tiledata = _openslide_cache_get(tmp_global_osr->cache,
+                                              level, tile_col, tile_row,
+                                              &cache_entry);
+    if (!tiledata) {
+        _openslide_cache_put(tmp_global_osr->cache, &level->base, tile_col, tile_row,
+                             tile_pixels, tw * th * 4,
+                             &cache_entry);
+    } else {
+        free(tile_pixels);
+    }
 }
 
 
@@ -133,7 +139,9 @@ static bool philips_isyntax_read_tile(
     if (!tiledata) {
         // TODO(avirodov): the insyntax.c code asserts if tiles loaded more than once. But OpenSlide cache can (and
         //  should) eventually evict. Need testscase for this.
-        LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
+        LOG("### isyntax_load_tile(x=%ld, y=%ld) openslide_cache->size=%ld isyntax->allocator->size=%ld",
+            tile_col, tile_row, /*_openslide_cache_get_total_size(osr->cache)*/0,
+            data->h_coeff_block_allocator.chunk_count + data->ll_coeff_block_allocator.chunk_count);
         isyntax_level_t* stream_level = &data->images[level->image_idx].levels[level->level_idx];
         i32 px_offset_x = 0;
         i32 px_offset_y = 0;
@@ -172,9 +180,13 @@ static bool philips_isyntax_read_tile(
         // TODO(avirodov): it may be possible the cache failed to fill for other reasons. Would be nice to know
         //  specifically that this is due tile->exists == false.
         if (tiledata == NULL) {
-            LOG("missing tile e(x=%ld, y=%ld), filling with background.", tile_col, tile_row);
+            LOG("missing tile (x=%ld, y=%ld), filling with background.", tile_col, tile_row);
             tiledata = malloc(tw * th * 4);
             memset(tiledata, 255, tw * th * 4);
+
+            _openslide_cache_put(tmp_global_osr->cache, &level->base, tile_col, tile_row,
+                                 tiledata, tw * th * 4,
+                                 &cache_entry);
         }
     }
 
