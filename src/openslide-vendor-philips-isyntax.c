@@ -1,13 +1,8 @@
 #include <config.h>
 
 #include "openslide-private.h"
-#include "openslide-decode-jpeg.h"
-#include "openslide-decode-tiff.h"
-#include "openslide-decode-tifflike.h"
-#include "openslide-decode-xml.h"
 
 #include <glib.h>
-#include <math.h>
 #include <string.h>
 #include <tiffio.h>
 #include "isyntax.h"
@@ -79,9 +74,6 @@ static bool philips_isyntax_detect(
         const char *filename,
         struct _openslide_tifflike *tl G_GNUC_UNUSED,
         GError **err G_GNUC_UNUSED) {
-//    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-//                "philips_isyntax_detect NYI");
-//    return false;
     LOG("got filename %s", filename);
 
     const char* ext = strrchr(filename, '.');
@@ -158,7 +150,7 @@ static bool philips_isyntax_read_tile(
         // If there is no tiledata, it is because the tile doesn't exist in the .isyntax file (empty tiles are not
         // stored). Fill with background.
         // TODO(avirodov): it may be possible the cache failed to fill for other reasons. Would be nice to know
-        //  specifically that this is due tile->exists == false.
+        //  specifically that this is due to tile->exists == false.
         if (tiledata == NULL) {
             LOG("missing tile (x=%ld, y=%ld), filling with background.", tile_col, tile_row);
             tiledata = malloc(tw * th * 4);
@@ -208,8 +200,8 @@ static bool philips_isyntax_open(
     g_assert(wsi_image_idx >= 0 && wsi_image_idx < data->image_count);
     isyntax_image_t* wsi_image = &data->images[wsi_image_idx];
 
+    // Store openslide information about each level.
     isyntax_level_t* levels = wsi_image->levels;
-    // TODO(avirodov): memleaks, here and below.
     osr->levels = malloc(sizeof(philips_isyntax_level*) * wsi_image->level_count);
     osr->level_count = wsi_image->level_count;
     for (int i = 0; i < wsi_image->level_count; ++i) {
