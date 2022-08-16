@@ -252,9 +252,10 @@ static bool philips_isyntax_paint_region(
     philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
 
     // LOG("x=%ld y=%ld level=%d w=%d h=%d", x, y, level->level_idx, w, h);
+    // Note: round is necessary to avoid producing resampled (and thus blurry) images on higher levels.
     return _openslide_grid_paint_region(level->grid, cr, NULL,
-                                        x / level->base.downsample,
-                                        y / level->base.downsample,
+                                        round(x / level->base.downsample),
+                                        round(y / level->base.downsample),
                                         osr_level, w, h,
                                         err);
 }

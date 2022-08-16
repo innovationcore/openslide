@@ -31,19 +31,21 @@ write_png_corner_enhanced() {
 rm -f difflog.txt
 
 # Note: current implementation has a 765px padding for unknown reason.
-# write_png_corner_enhanced 765 765 0 4096 4096
+write_png_corner_enhanced 765 765 0 4096 4096
+write_png_corner_enhanced 765 765 1 2048 2048
+write_png_corner_enhanced 765 765 2 1024 1024
+write_png_corner_enhanced 765 765 3 512 512
+write_png_corner_enhanced 765 765 4 256 256
+write_png_corner_enhanced 765 765 5 128 128
+write_png_corner_enhanced 765 765 6 64 64
+write_png_corner_enhanced 765 765 7 32 32
+
 
 # TODO(avirodov): this is a bit more blurry than golden, seems some resampling is going on
 # write_png_corner_enhanced 763 763 1 2048 2048
 # This is better - no resampling, but offset:
 # write_png_corner_enhanced 768 768 1 2048 2048
 
-#write_png_corner_enhanced 765 765 2 1024 1024
-#write_png_corner_enhanced 765 765 3 512 512
-#write_png_corner_enhanced 765 765 4 256 256
-#write_png_corner_enhanced 765 765 5 128 128
-#write_png_corner_enhanced 765 765 6 64 64
-#write_png_corner_enhanced 765 765 7 32 32
 
 
 
