@@ -1,11 +1,11 @@
 #include <config.h>
-
-#include "openslide-private.h"
-
 #include <glib.h>
 #include <string.h>
 #include <tiffio.h>
 #include "isyntax.h"
+
+// This header "poisons" some functions, so must be included after system headers that use the poisoned functions (eg fclose in wchar.h).
+#include "openslide-private.h"
 
 #define LOG(msg, ...) printf("%s: " msg "\n", __FUNCTION__, ##__VA_ARGS__)
 #define LOG_VAR(fmt, var) printf("%s: %s=" fmt "\n", __FUNCTION__, #var, var)
