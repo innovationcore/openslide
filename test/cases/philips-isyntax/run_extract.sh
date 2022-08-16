@@ -7,6 +7,10 @@ write_png_whole() {
 
 write_png_part1() {
   $WRITE_PNG golden-image-data/testslide.isyntax $1 $2 $3 $4 $5 extracted-image-data/testslide_19200_19200_21248_21248_$3.png
+  # compare -metric RMSE -subimage-search golden-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png
+  composite golden-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/testslide_19200_19200_21248_21248_$3.png -compose difference extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png
+  convert extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png -auto-level extracted-image-data/diffnorm_testslide_19200_19200_21248_21248_$3.png
+  python3 eval_diff_image.py extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png
 }
 
 write_png_part1_tiff() {
@@ -48,6 +52,7 @@ write_png_part1_tiff() {
 
 # TODO(avirodov): why not 19200?
 write_png_part1 19965 19965 0 2048 2048
+
 
 #write_png_part1 19200 19200 0 2048 2048
 #write_png_part1 19198 19198 1 1024 1024
