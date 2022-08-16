@@ -17,6 +17,26 @@ write_png_part1_tiff() {
   $WRITE_PNG golden-image-data/testslide.tiff $1 $2 $3 $4 $5 extracted-image-data/tiff_testslide_19200_19200_21248_21248_$3.png
 }
 
+write_png_corner_enhanced() {
+  $WRITE_PNG golden-image-data/testslide.isyntax $1 $2 $3 $4 $5 extracted-image-data/testslide_0_0_4096_4096_$3.png
+  convert -brightness-contrast -70x80 extracted-image-data/testslide_0_0_4096_4096_$3.png extracted-image-data/enhanced_testslide_0_0_4096_4096_$3.png
+}
+
+write_png_corner_enhanced 0 0 0 4096 4096
+write_png_corner_enhanced 0 0 1 2048 2048
+write_png_corner_enhanced 0 0 2 1024 1024
+write_png_corner_enhanced 0 0 3 512 512
+write_png_corner_enhanced 0 0 4 256 256
+write_png_corner_enhanced 0 0 5 128 128
+write_png_corner_enhanced 0 0 6 64 64
+write_png_corner_enhanced 0 0 7 32 32
+
+
+
+
+
+
+
 #write_png_whole 7 292 572
 #write_png_whole 6 584	1144
 #write_png_whole 5 1168	2288
@@ -51,7 +71,7 @@ write_png_part1_tiff() {
 
 
 # TODO(avirodov): why not 19200?
-write_png_part1 19965 19965 0 2048 2048
+# write_png_part1 19965 19965 0 2048 2048
 
 
 #write_png_part1 19200 19200 0 2048 2048
