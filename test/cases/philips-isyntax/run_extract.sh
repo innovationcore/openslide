@@ -1,6 +1,13 @@
 set -e -x
 WRITE_PNG=../../../build/tools/openslide-write-png
 
+compute_diff() {
+  composite golden-image-data/$1 extracted-image-data/$1 -compose difference extracted-image-data/diff_$1
+  convert extracted-image-data/diff_$1 -auto-level extracted-image-data/diffnorm_$1
+  echo extracted-image-data/diff_$1 >> difflog.txt
+  python3 eval_diff_image.py extracted-image-data/diff_$1 >> difflog.txt
+}
+
 write_png_whole() {
   $WRITE_PNG golden-image-data/testslide.isyntax 0 0 $1 $2 $3 extracted-image-data/testslide_0_0_37376_73216_$1.png
 }
@@ -8,9 +15,7 @@ write_png_whole() {
 write_png_part1() {
   $WRITE_PNG golden-image-data/testslide.isyntax $1 $2 $3 $4 $5 extracted-image-data/testslide_19200_19200_21248_21248_$3.png
   # compare -metric RMSE -subimage-search golden-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png
-  composite golden-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/testslide_19200_19200_21248_21248_$3.png -compose difference extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png
-  convert extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png -auto-level extracted-image-data/diffnorm_testslide_19200_19200_21248_21248_$3.png
-  python3 eval_diff_image.py extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png
+  compute_diff testslide_19200_19200_21248_21248_$3.png
 }
 
 write_png_part1_tiff() {
@@ -20,16 +25,25 @@ write_png_part1_tiff() {
 write_png_corner_enhanced() {
   $WRITE_PNG golden-image-data/testslide.isyntax $1 $2 $3 $4 $5 extracted-image-data/testslide_0_0_4096_4096_$3.png
   convert -brightness-contrast -70x80 extracted-image-data/testslide_0_0_4096_4096_$3.png extracted-image-data/enhanced_testslide_0_0_4096_4096_$3.png
+  compute_diff testslide_0_0_4096_4096_$3.png
 }
 
-write_png_corner_enhanced 0 0 0 4096 4096
-write_png_corner_enhanced 0 0 1 2048 2048
-write_png_corner_enhanced 0 0 2 1024 1024
-write_png_corner_enhanced 0 0 3 512 512
-write_png_corner_enhanced 0 0 4 256 256
-write_png_corner_enhanced 0 0 5 128 128
-write_png_corner_enhanced 0 0 6 64 64
-write_png_corner_enhanced 0 0 7 32 32
+rm -f difflog.txt
+
+# Note: current implementation has a 765px padding for unknown reason.
+# write_png_corner_enhanced 765 765 0 4096 4096
+
+# TODO(avirodov): this is a bit more blurry than golden, seems some resampling is going on
+# write_png_corner_enhanced 763 763 1 2048 2048
+# This is better - no resampling, but offset:
+# write_png_corner_enhanced 768 768 1 2048 2048
+
+#write_png_corner_enhanced 765 765 2 1024 1024
+#write_png_corner_enhanced 765 765 3 512 512
+#write_png_corner_enhanced 765 765 4 256 256
+#write_png_corner_enhanced 765 765 5 128 128
+#write_png_corner_enhanced 765 765 6 64 64
+#write_png_corner_enhanced 765 765 7 32 32
 
 
 
@@ -83,4 +97,6 @@ write_png_corner_enhanced 0 0 7 32 32
 #write_png_part1 19120 19120 6 32 32
 #write_png_part1 19060 19060 7 16 16
 #
+
+cat difflog.txt
 
