@@ -23,17 +23,16 @@ void submit_tile_completed(
         void* tile_pixels,
         i32 scale,
         i32 tile_index,
-        i32 tile_width,
-        i32 tile_height) {
+        i32 tile_width G_GNUC_UNUSED,
+        i32 tile_height G_GNUC_UNUSED) {
     openslide_t *osr = (openslide_t*)userdata;
     isyntax_t *isyntax = osr->data;
     philips_isyntax_level* pi_level = (philips_isyntax_level*)osr->levels[scale];
-    isyntax_image_t* wsi_image = &isyntax->images[isyntax->wsi_image_index];
 
     i32 width = pi_level->isyntax_level->width_in_tiles;
     i32 tile_col = tile_index % width;
     i32 tile_row = tile_index / width;
-    LOG("### level=%d tile_col=%ld tile_row=%ld", pi_level->isyntax_level->scale, tile_col, tile_row);
+    LOG("### level=%d tile_col=%d tile_row=%d", pi_level->isyntax_level->scale, tile_col, tile_row);
     // tile size
     int64_t tw = isyntax->tile_width;
     int64_t th = isyntax->tile_height;
@@ -92,7 +91,7 @@ static bool philips_isyntax_read_tile(
         cairo_t *cr,
         struct _openslide_level *osr_level,
         int64_t tile_col, int64_t tile_row,
-        void *arg,
+        void *arg G_GNUC_UNUSED,
         GError **err) {
     isyntax_t *isyntax = osr->data;
     philips_isyntax_level* pi_level = (philips_isyntax_level*)osr_level;
@@ -173,7 +172,7 @@ static bool philips_isyntax_read_tile(
     return true;
 }
 
-void add_float_property(openslide_t *osr, const char* property_name, float value) {
+static void add_float_property(openslide_t *osr, const char* property_name, float value) {
     g_hash_table_insert(osr->properties, g_strdup(property_name),
                         _openslide_format_double(value));
 }
@@ -181,8 +180,8 @@ void add_float_property(openslide_t *osr, const char* property_name, float value
 static bool philips_isyntax_open(
         openslide_t *osr,
         const char *filename,
-        struct _openslide_tifflike *tl,
-        struct _openslide_hash *quickhash1,
+        struct _openslide_tifflike *tl G_GNUC_UNUSED,
+        struct _openslide_hash *quickhash1 G_GNUC_UNUSED,
         GError **err) {
     static bool threadmemory_initialized = false;
     if (!threadmemory_initialized) {
@@ -264,12 +263,11 @@ static bool philips_isyntax_open(
 }
 
 static bool philips_isyntax_paint_region(
-        openslide_t *osr, cairo_t *cr,
+        openslide_t *osr G_GNUC_UNUSED, cairo_t *cr,
         int64_t x, int64_t y,
         struct _openslide_level *osr_level,
         int32_t w, int32_t h,
         GError **err) {
-    isyntax_t *data = osr->data;
     philips_isyntax_level* level = (philips_isyntax_level*)osr_level;
 
     // LOG("x=%ld y=%ld level=%d w=%d h=%d", x, y, level->level_idx, w, h);

@@ -48,8 +48,6 @@ bounds2i clip_bounds2i(bounds2i a, bounds2i b) {
 }
 
 
-void submit_tile_completed(void* userdata, void* tile_pixels, i32 scale, i32 tile_index, i32 tile_width, i32 tile_height);
-
 static void isyntax_init_dummy_codeblocks(isyntax_t* isyntax) {
 	// Blocks with 'background' coefficients, to use for filling in margins at the edges (in case the neighboring codeblock doesn't exist)
 	if (!isyntax->black_dummy_coeff) {

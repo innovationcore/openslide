@@ -344,6 +344,9 @@ void isyntax_begin_load_tile(void* userdata, isyntax_t* isyntax, isyntax_image_t
 void isyntax_do_first_load(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi);
 void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer);
 
+// TODO(avirodov): Implement as proper callback.
+void submit_tile_completed(void* userdata, void* tile_pixels, i32 scale, i32 tile_index, i32 tile_width, i32 tile_height);
+
 #ifdef __cplusplus
 }
 #endif
