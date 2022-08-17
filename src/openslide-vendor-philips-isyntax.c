@@ -74,16 +74,35 @@ static bool philips_isyntax_detect(
         struct _openslide_tifflike *tl G_GNUC_UNUSED,
         GError **err G_GNUC_UNUSED) {
     LOG("got filename %s", filename);
-
-    const char* ext = strrchr(filename, '.');
-
-    if (ext != NULL && strcasecmp(ext, ".isyntax") == 0) {
-        LOG("got isyntax!");
-        return true;
-    } else {
-        LOG("not isyntax.");
+    LOG_VAR("%p", tl);
+    // reject TIFFs
+    if (tl) {
+        g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
+                    "Is a TIFF file");
         return false;
     }
+
+    g_autoptr(_openslide_file) f = _openslide_fopen(filename, err);
+    if (f == NULL) {
+        LOG("Failed to open file");
+        return false;
+    }
+
+    const int num_chars_to_read = 256;
+    g_autofree char *buf = g_malloc(num_chars_to_read);
+    size_t num_read = _openslide_fread(f, buf, num_chars_to_read-1);
+    buf[num_chars_to_read-1] = 0;
+    LOG_VAR("%d", num_read);
+    LOG_VAR("%s", buf);
+
+    // TODO(avirodov): probably a more robust XML parsing is needed.
+    if (strstr(buf, "<DataObject ObjectType=\"DPUfsImport\">") != NULL) {
+        LOG("got isyntax.");
+        return true;
+    }
+
+    LOG("not isyntax.");
+    return false;
 }
 
 static bool philips_isyntax_read_tile(
