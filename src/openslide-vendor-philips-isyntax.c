@@ -173,6 +173,11 @@ static bool philips_isyntax_read_tile(
     return true;
 }
 
+void add_float_property(openslide_t *osr, const char* property_name, float value) {
+    g_hash_table_insert(osr->properties, g_strdup(property_name),
+                        _openslide_format_double(value));
+}
+
 static bool philips_isyntax_open(
         openslide_t *osr,
         const char *filename,
@@ -193,6 +198,22 @@ static bool philips_isyntax_open(
     bool open_result = isyntax_open(data, filename);
     LOG_VAR("%d", (int)open_result);
     LOG_VAR("%d", data->image_count);
+
+    LOG_VAR("%d", data->is_mpp_known);
+    if (data->is_mpp_known) {
+        LOG_VAR("%f", data->mpp_x);
+        LOG_VAR("%f", data->mpp_y);
+        add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_X, data->mpp_x);
+        add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_Y, data->mpp_x);
+        const float float_equals_tolerance = 1e-5;
+        if (fabsf(data->mpp_x - data->mpp_y) < float_equals_tolerance) {
+            // Compute objective power from microns-per-pixel, see e.g. table in "Scan Performance" here:
+            // https://www.microscopesinternational.com/blog/20170928-whichobjective.aspx
+            float objective_power = 10.0f / data->mpp_x;
+            LOG_VAR("%f", objective_power);
+            add_float_property(osr, OPENSLIDE_PROPERTY_NAME_OBJECTIVE_POWER, objective_power);
+        }
+    }
 
     // Find wsi image. Extracting other images not supported. Assuming only one wsi.
     int wsi_image_idx = data->wsi_image_index;
