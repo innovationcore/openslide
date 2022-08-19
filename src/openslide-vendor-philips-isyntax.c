@@ -113,6 +113,9 @@ static bool philips_isyntax_read_tile(
         void *arg G_GNUC_UNUSED,
         GError **err) {
     isyntax_t *isyntax = osr->data;
+    g_autoptr(GMutexLocker) locker G_GNUC_UNUSED =
+            g_mutex_locker_new(&isyntax->read_mutex);
+
     philips_isyntax_level* pi_level = (philips_isyntax_level*)osr_level;
     isyntax_image_t* wsi_image = &isyntax->images[isyntax->wsi_image_index];
 
@@ -277,7 +280,7 @@ static bool philips_isyntax_open(
         LOG_VAR("%d", (int)levels[i].is_fully_loaded);
     }
     osr->ops = &philips_isyntax_ops;
-
+    g_mutex_init(&data->read_mutex);
     return true;
 }
 

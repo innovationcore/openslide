@@ -28,6 +28,9 @@ extern "C" {
 #include "yxml.h"
 #include "mathutils.h"
 
+// TODO(avirodov): cross-platform mutex.
+#include <glib.h> // For GMutex as used in OpenSlide.
+
 #define DWT_COEFF_BITS 16
 #if (DWT_COEFF_BITS==16)
 typedef i16 icoeff_t;
@@ -313,6 +316,7 @@ typedef struct isyntax_t {
 	block_allocator_t h_coeff_block_allocator;
 	float loading_time;
 	i32 refcount;
+    GMutex read_mutex; // TODO(avirodov): should we relax this? Not sure the streamer supports multithreaded querying.
 } isyntax_t;
 
 // function prototypes
