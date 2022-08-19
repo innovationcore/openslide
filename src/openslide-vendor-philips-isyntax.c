@@ -131,7 +131,7 @@ static bool philips_isyntax_read_tile(
                                               pi_level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
-        LOG("### isyntax_load_tile(x=%ld, y=%ld)", tile_col, tile_row);
+        LOG("### isyntax_load_tile(x=%ld, y=%ld scale=%d)", tile_col, tile_row, pi_level->isyntax_level->scale);
         isyntax_level_t* stream_level = pi_level->isyntax_level;
         i32 px_offset_x = 0;
         i32 px_offset_y = 0;

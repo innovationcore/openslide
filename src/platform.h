@@ -422,7 +422,9 @@ unsigned int crc32_skip_carriage_return(unsigned char* buffer, int len);
 #undef extern
 #endif
 
-extern THREAD_LOCAL thread_memory_t* local_thread_memory;
+// TODO(avirodov): I disabled thread-local memory allocation here, need to either re-enable it if we want to support
+//  thread-specific pools, and initialize it properly on new threads, or have a more proper solution.
+extern /*THREAD_LOCAL*/ thread_memory_t* local_thread_memory;
 static inline temp_memory_t begin_temp_memory_on_local_thread() { return begin_temp_memory(&local_thread_memory->temp_arena); }
 
 extern int g_argc;
