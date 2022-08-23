@@ -1631,6 +1631,7 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
 	}
 
 	tile->is_loaded = true; // Meaning: it is now safe to start loading 'child' tiles of the next level
+    tile->is_submitted_for_loading = false;
 
 	// For the Y (luminance) color channel, we actually need the absolute value of the Y-channel wavelet coefficient.
 	// (This doesn't hold for Co and Cg, those are are used directly as signed integers)

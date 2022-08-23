@@ -714,7 +714,9 @@ void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer) {
 				for (i32 local_tile_x = target_region->visible_offset.x; local_tile_x < target_region->visible_offset.x + target_region->visible_width; ++local_tile_x) {
 					i32 tile_x = target_region->offset.x + local_tile_x;
 					isyntax_tile_t* tile = target_level->tiles + (tile_y * target_level->width_in_tiles) + tile_x;
-					if (!tile->exists || tile->is_submitted_for_loading || tile->is_loaded) {
+                    // TODO(avirodov): better solution to requering tiles that were already loaded but since then were
+                    //  evicted from the OpenSlide cache.
+					if (!tile->exists || tile->is_submitted_for_loading/* || tile->is_loaded*/) {
 						continue;
 					} else {
 						v2f tile_center = {
@@ -938,7 +940,9 @@ void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer) {
 							isyntax_tile_t* tile = level->tiles + tile_y * level->width_in_tiles + tile_x;
 							isyntax_tile_req_t* req = region->tile_req + local_tile_y * region->width_in_tiles + local_tile_x;
 
-							if (!req->want_full_load_for_display) {
+                            // TODO(avirodov): better solution to requering tiles that were already loaded but since then were
+                            //  evicted from the OpenSlide cache. Remove the "&& false".
+							if (!req->want_full_load_for_display && false) {
 								continue; // This tile does not need to be loaded (probably because it has already been loaded)
 							}
 							if (tile->is_submitted_for_loading) {

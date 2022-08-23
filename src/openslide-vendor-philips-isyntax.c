@@ -110,6 +110,7 @@ void submit_tile_completed(
                              tile_pixels, tw * th * 4,
                              &cache_entry);
     } else {
+        // LOG("@@@ redundant tile level=%d tile_col=%d tile_row=%d", pi_level->isyntax_level->scale, tile_col, tile_row);
         free(tile_pixels);
     }
 }
@@ -220,7 +221,7 @@ static bool philips_isyntax_read_tile(
         if (tiledata == NULL) {
             LOG("missing tile (x=%ld, y=%ld), filling with background.", tile_col, tile_row);
             tiledata = malloc(tw * th * 4);
-            memset(tiledata, 128, tw * th * 4);
+            memset(tiledata, 255, tw * th * 4);
             annotate_tile(tiledata, pi_level->isyntax_level->scale, tile_col, tile_row, tw, th);
 
             _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
