@@ -3,6 +3,7 @@
 #include <string.h>
 #include <tiffio.h>
 #include "isyntax.h"
+#include "font8x8_basic.h" // From https://github.com/dhepper/font8x8/blob/8e279d2d864e79128e96188a6b9526cfa3fbfef9/font8x8_basic.h
 
 // This header "poisons" some functions, so must be included after system headers that use the poisoned functions (eg fclose in wchar.h).
 #include "openslide-private.h"
@@ -17,6 +18,49 @@ typedef struct philips_isyntax_level {
     isyntax_level_t* isyntax_level;
     struct _openslide_grid *grid;
 } philips_isyntax_level;
+
+void draw_horiz_line(uint32_t* tile_pixels, i32 tile_width, i32 y, i32 start, i32 end, uint32_t color) {
+    for (int x = start; x < end; ++x) {
+        tile_pixels[y*tile_width + x] = color;
+    }
+}
+
+void draw_vert_line(uint32_t* tile_pixels, i32 tile_width, i32 x, i32 start, i32 end, uint32_t color) {
+    for (int y = start; y < end; ++y) {
+        tile_pixels[y*tile_width + x] = color;
+    }
+}
+
+void draw_text(uint32_t* tile_pixels, i32 tile_width, i32 x_pos, i32 y_pos, uint32_t color, const char* text) {
+    const int font_size = 8;
+    for (char* ch = text; *ch != 0; ++ch) {
+        for (int y = 0; y < font_size; ++y) {
+            uint8_t bit_line = font8x8_basic[*ch][y];
+            for (int x = 0; x < font_size; ++x) {
+                if (bit_line & (1u << x)) {
+                    tile_pixels[(y + y_pos) * tile_width + x + x_pos] = color;
+                }
+            }
+        }
+        x_pos += font_size;
+    }
+}
+
+void annotate_tile(uint32_t* tile_pixels, i32 scale, i32 tile_col, i32 tile_row, i32 tile_width, i32 tile_height) {
+    // OpenCV in C is hard... the core_c.h includes types_c.h which includes cvdef.h which is c++.
+    // But we don't need much. Axis-aligned lines, and some simple text.
+    int pad = 1;
+    uint32_t color = 0xff0000ff; // ARGB
+    draw_horiz_line(tile_pixels, tile_width, /*y=*/pad, /*start=*/pad, /*end=*/tile_width-pad, color);
+    draw_horiz_line(tile_pixels, tile_width, /*y=*/tile_height-pad, /*start=*/pad, /*end=*/tile_width-pad, color);
+
+    draw_vert_line(tile_pixels, tile_width, /*x=*/pad, /*start=*/pad, /*end=*/tile_height-pad, color);
+    draw_vert_line(tile_pixels, tile_width, /*x=*/tile_width-pad, /*start=*/pad, /*end=*/tile_height-pad, color);
+
+    char buf[128];
+    sprintf(buf, "x=%d,y=%d,s=%d", tile_row, tile_col, scale);
+    draw_text(tile_pixels, tile_width, 10, 10, color, buf);
+}
 
 void submit_tile_completed(
         void* userdata,
@@ -36,6 +80,7 @@ void submit_tile_completed(
     // tile size
     int64_t tw = isyntax->tile_width;
     int64_t th = isyntax->tile_height;
+    annotate_tile(tile_pixels, pi_level->isyntax_level->scale, tile_col, tile_row, tw, th);
 
     // cache
     g_autoptr(_openslide_cache_entry) cache_entry = NULL;
@@ -175,7 +220,8 @@ static bool philips_isyntax_read_tile(
         if (tiledata == NULL) {
             LOG("missing tile (x=%ld, y=%ld), filling with background.", tile_col, tile_row);
             tiledata = malloc(tw * th * 4);
-            memset(tiledata, 255, tw * th * 4);
+            memset(tiledata, 128, tw * th * 4);
+            annotate_tile(tiledata, pi_level->isyntax_level->scale, tile_col, tile_row, tw, th);
 
             _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
                                  tiledata, tw * th * 4,
