@@ -1542,19 +1542,32 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
 			} break;
 		}
 
-		// Distribute result to child tiles
-		if (scale > 0) {
-			isyntax_level_t* next_level = wsi->levels + (scale - 1);
-			isyntax_tile_t* child_top_left = next_level->tiles + (tile_y*2) * next_level->width_in_tiles + (tile_x*2);
-			isyntax_tile_t* child_top_right = child_top_left + 1;
-			isyntax_tile_t* child_bottom_left = child_top_left + next_level->width_in_tiles;
-			isyntax_tile_t* child_bottom_right = child_bottom_left + 1;
+        if (scale == 0) {
+            // No children to take care of at level 0.
+            continue;
+        }
 
-            // TODO(avirodov): triggering assert here.
-//			ASSERT(child_top_left->color_channels[color].coeff_ll == NULL);
-//			ASSERT(child_top_right->color_channels[color].coeff_ll == NULL);
-//			ASSERT(child_bottom_left->color_channels[color].coeff_ll == NULL);
-//			ASSERT(child_bottom_right->color_channels[color].coeff_ll == NULL);
+        // Distribute result to child tiles if it was not distributed already.
+        isyntax_level_t* next_level = wsi->levels + (scale - 1);
+        isyntax_tile_t* child_top_left = next_level->tiles + (tile_y*2) * next_level->width_in_tiles + (tile_x*2);
+        isyntax_tile_t* child_top_right = child_top_left + 1;
+        isyntax_tile_t* child_bottom_left = child_top_left + next_level->width_in_tiles;
+        isyntax_tile_t* child_bottom_right = child_bottom_left + 1;
+
+        if (child_top_left->color_channels[color].coeff_ll != NULL) {
+            // Ensure all children are consistent.
+			ASSERT(child_top_left->color_channels[color].coeff_ll != NULL);
+			ASSERT(child_top_right->color_channels[color].coeff_ll != NULL);
+			ASSERT(child_bottom_left->color_channels[color].coeff_ll != NULL);
+			ASSERT(child_bottom_right->color_channels[color].coeff_ll != NULL);
+            // No more work to do here.
+            continue;
+
+        } else {
+			ASSERT(child_top_left->color_channels[color].coeff_ll == NULL);
+			ASSERT(child_top_right->color_channels[color].coeff_ll == NULL);
+			ASSERT(child_bottom_left->color_channels[color].coeff_ll == NULL);
+			ASSERT(child_bottom_right->color_channels[color].coeff_ll == NULL);
 
 			// NOTE: malloc() and free() can become a bottleneck, they don't scale well especially across many threads.
 			// We use a custom block allocator to address this.
@@ -1632,6 +1645,7 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
 
 	tile->is_loaded = true; // Meaning: it is now safe to start loading 'child' tiles of the next level
     tile->is_submitted_for_loading = false;
+    tile->force_reload = false;
 
 	// For the Y (luminance) color channel, we actually need the absolute value of the Y-channel wavelet coefficient.
 	// (This doesn't hold for Co and Cg, those are are used directly as signed integers)

@@ -110,7 +110,7 @@ void submit_tile_completed(
                              tile_pixels, tw * th * 4,
                              &cache_entry);
     } else {
-        // LOG("@@@ redundant tile level=%d tile_col=%d tile_row=%d", pi_level->isyntax_level->scale, tile_col, tile_row);
+        LOG("@@@ redundant tile level=%d tile_col=%d tile_row=%d", pi_level->isyntax_level->scale, tile_col, tile_row);
         free(tile_pixels);
     }
 }

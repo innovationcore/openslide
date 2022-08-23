@@ -210,6 +210,7 @@ typedef struct isyntax_tile_t {
 	bool is_submitted_for_h_coeff_decompression;
 	bool is_submitted_for_loading;
 	bool is_loaded;
+    bool force_reload;
 } isyntax_tile_t;
 
 typedef struct isyntax_level_t {
