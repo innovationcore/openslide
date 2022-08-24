@@ -20,6 +20,7 @@ write_png_part1() {
   $WRITE_PNG golden-image-data/testslide.isyntax $1 $2 $3 $4 $5 extracted-image-data/testslide_19200_19200_21248_21248_$3.png
   # compare -metric RMSE -subimage-search golden-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/testslide_19200_19200_21248_21248_$3.png extracted-image-data/diff_testslide_19200_19200_21248_21248_$3.png
   compute_diff testslide_19200_19200_21248_21248_$3.png
+  convert extracted-image-data/testslide_19200_19200_21248_21248_$3.png -resize 2048x2048 extracted-image-data/samescale_testslide_19200_19200_21248_21248_$3.png
 }
 
 write_png_part1_tiff() {
@@ -79,7 +80,7 @@ write_png_part1 19965 19965 7 16 16
 #write_png_part1_tiff 19198 19198 1 1024 1024
 #write_png_part1_tiff 19192 19192 2 512 512
 #write_png_part1_tiff 19184 19184 3 256 256
-# TODO(avirodov): that's the right coords (if you go by y), but produces empty??? wtf?
+# TODO(avirodov): that's the right coords (if you go by y), but produces empty???
 #write_png_part1_tiff 19180 19180 4 128 128
 #write_png_part1_tiff 19160 19160 5 64 64
 #write_png_part1_tiff 19120 19120 6 32 32

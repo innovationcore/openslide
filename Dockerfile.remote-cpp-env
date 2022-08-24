@@ -34,7 +34,7 @@ RUN apt-get update \
       python \
 	  vim \
 	  git \
-	  pkg-config libtool locales python3-pip valgrind \
+	  pkg-config libtool locales python3-pip valgrind imagemagick \
 	  zlib1g-dev libjpeg-dev libopenjp2-7-dev libtiff-dev libglib2.0-dev libcairo-dev libgdk-pixbuf2.0-dev \
 	  libxml2-dev libsqlite3-dev libsdl2-dev \
   && apt-get clean
