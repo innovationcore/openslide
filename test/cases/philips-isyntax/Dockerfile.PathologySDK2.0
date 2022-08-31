@@ -1,5 +1,5 @@
 # sudo docker image build -t philips_sdk_1804 -f Dockerfile .
-# sudo docker run -v /home/avirodov/Downloads/:/workspace -it philips_sdk_1804  bash
+# sudo  docker run -v C:\projects\iSyntax\:/workspace -p 33890:3389 -it philips_sdk_1804  bash
 
 # Note: coords are specified at 0 level, and seems to need to be on 128px boundary. 
 
@@ -15,7 +15,7 @@
 FROM ubuntu:18.04 as base
 
 RUN apt update
-RUN apt install -y python3.6 
+RUN apt install -y python3.7
 
 COPY Ubuntu1804/philips-pathologysdk-2.0-ubuntu18_04_py36_research /philips-pathologysdk/
 COPY CodeSamples /philips-pathologysdk/
@@ -28,7 +28,10 @@ RUN echo y | bash InstallPathologySDK.sh py3
 
 RUN apt install -y libtiff5-dev zlib1g-dev libjpeg-dev
 RUN apt install -y vim
-RUN apt install -y python3-pip
+RUN apt install -y python3-pip python3-tk
 RUN pip3 install numpy pillow
+
+# https://dev.to/avanishsubbiah/comment/lp3i
+RUN apt install -y xrdp xfce4
 
 WORKDIR /philips-pathologysdk/
