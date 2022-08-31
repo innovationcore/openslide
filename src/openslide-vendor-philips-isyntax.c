@@ -8,8 +8,8 @@
 // This header "poisons" some functions, so must be included after system headers that use the poisoned functions (eg fclose in wchar.h).
 #include "openslide-private.h"
 
-#define LOG(msg, ...) printf("%s: " msg "\n", __FUNCTION__, ##__VA_ARGS__)
-#define LOG_VAR(fmt, var) printf("%s: %s=" fmt "\n", __FUNCTION__, #var, var)
+#define LOG(msg, ...) console_print(msg, ##__VA_ARGS__)
+#define LOG_VAR(fmt, var) console_print("%s: %s=" fmt "\n", __FUNCTION__, #var, var)
 
 static const struct _openslide_ops philips_isyntax_ops;
 
@@ -47,6 +47,7 @@ void draw_text(uint32_t* tile_pixels, i32 tile_width, i32 x_pos, i32 y_pos, uint
 }
 
 void annotate_tile(uint32_t* tile_pixels, i32 scale, i32 tile_col, i32 tile_row, i32 tile_width, i32 tile_height) {
+#if IS_DEBUG_ANNOTATE_TILE
     // OpenCV in C is hard... the core_c.h includes types_c.h which includes cvdef.h which is c++.
     // But we don't need much. Axis-aligned lines, and some simple text.
     int pad = 1;
@@ -60,6 +61,9 @@ void annotate_tile(uint32_t* tile_pixels, i32 scale, i32 tile_col, i32 tile_row,
     char buf[128];
     sprintf(buf, "x=%d,y=%d,s=%d", tile_row, tile_col, scale);
     draw_text(tile_pixels, tile_width, 10, 10, color, buf);
+#else
+    // Intentionally empty, the compiler should optimize the call away.
+#endif
 }
 
 void submit_tile_completed(
