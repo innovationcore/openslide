@@ -289,6 +289,7 @@ typedef struct block_allocator_t {
 	i32 free_list_length;
 	benaphore_t lock;
 	bool is_valid;
+    i32 use_count;
 } block_allocator_t;
 
 typedef struct directory_listing_t directory_listing_t;

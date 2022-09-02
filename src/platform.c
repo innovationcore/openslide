@@ -298,6 +298,7 @@ void* block_alloc(block_allocator_t* allocator) {
 			}
 		}
 	}
+    allocator->use_count++;
 	benaphore_unlock(&allocator->lock);
 	return result;
 }
@@ -323,6 +324,7 @@ void block_free(block_allocator_t* allocator, void* ptr_to_free) {
 		i32 free_index = allocator->free_list_length++;
 		allocator->free_list_storage[free_index] = free_item;
 		allocator->free_list = allocator->free_list_storage + free_index;
+        allocator->use_count--;
 		benaphore_unlock(&allocator->lock);
 	} else {
 		console_print_error("block_free(): invalid pointer!\n");

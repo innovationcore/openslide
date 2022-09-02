@@ -155,6 +155,39 @@ static bool philips_isyntax_detect(
     return false;
 }
 
+void philips_isyntax_flush_cache(openslide_t *osr) {
+    // TODO(avirodov): This is not a perfect solution, as an LRU cache would be more efficient.
+    LOG("@@@ philips_isyntax_flush_cache\n");
+    isyntax_t *isyntax = osr->data;
+    isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
+
+    // This is the logic used by isyntax_do_first_load. I reuse it here to not flush out 
+    // the first load tiles.
+    i32 levels_in_top_chunk = (wsi->max_scale % 3) + 1;
+
+    for (int level = wsi->max_scale - levels_in_top_chunk;  level >= 0; --level) {
+        isyntax_level_t* current_level = &wsi->levels[level];
+        LOG("@@@ unloadling level %d\n", current_level->scale);
+        for (i32 tile_idx = 0; tile_idx < current_level->tile_count; ++tile_idx) {
+            for (int channel_idx = 0; channel_idx < 3; ++channel_idx) {
+                isyntax_tile_channel_t* channel = &current_level->tiles[tile_idx].color_channels[channel_idx];
+                channel->neighbors_loaded = 0;
+                if (channel->coeff_h) block_free(&isyntax->h_coeff_block_allocator, channel->coeff_h);
+                if (channel->coeff_ll)  block_free(&isyntax->ll_coeff_block_allocator, channel->coeff_ll);
+                channel->coeff_h = NULL;
+                channel->coeff_ll = NULL;
+            }
+            current_level->tiles[tile_idx].has_ll = false;
+            current_level->tiles[tile_idx].has_h = false;
+            current_level->tiles[tile_idx].is_submitted_for_h_coeff_decompression = false;
+            current_level->tiles[tile_idx].is_submitted_for_loading = false;
+            current_level->tiles[tile_idx].is_loaded = false;
+            current_level->tiles[tile_idx].force_reload = false;
+        }
+    }
+}
+
+
 static bool philips_isyntax_read_tile(
         openslide_t *osr,
         cairo_t *cr,
@@ -231,6 +264,11 @@ static bool philips_isyntax_read_tile(
             _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
                                  tiledata, tw * th * 4,
                                  &cache_entry);
+        }
+        LOG("h_allocator=%d ll_allocator=%d\n", isyntax->h_coeff_block_allocator.use_count, isyntax->ll_coeff_block_allocator.use_count);
+        // TODO(avirodov): what is the right trigger size?
+        if (isyntax->h_coeff_block_allocator.use_count + isyntax->ll_coeff_block_allocator.use_count > 2000) {
+            philips_isyntax_flush_cache(osr);
         }
     }
 
