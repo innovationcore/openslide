@@ -156,6 +156,8 @@ static bool philips_isyntax_detect(
 }
 
 void philips_isyntax_flush_cache(openslide_t *osr) {
+    // TODO(avirodov): seems to break image extraction. Reenable or have a better solution.
+    return;
     // TODO(avirodov): This is not a perfect solution, as an LRU cache would be more efficient.
     LOG("@@@ philips_isyntax_flush_cache\n");
     isyntax_t *isyntax = osr->data;
