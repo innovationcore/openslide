@@ -211,7 +211,22 @@ typedef struct isyntax_tile_t {
 	bool is_submitted_for_loading;
 	bool is_loaded;
     bool force_reload;
+
+    bool cache_marked;
+    struct isyntax_tile_t* cache_next;
+    struct isyntax_tile_t* cache_prev;
+
+    // TODO(avirodov): hide behind compile flag. Useful for debug.
+    int dbg_tile_scale;
+    int dbg_tile_x;
+    int dbg_tile_y;
 } isyntax_tile_t;
+
+typedef struct isyntax_tile_list_t {
+    isyntax_tile_t* head;
+    isyntax_tile_t* tail;
+    int count;
+} isyntax_tile_list_t;
 
 typedef struct isyntax_level_t {
 	i32 scale;

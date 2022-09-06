@@ -188,7 +188,219 @@ void philips_isyntax_flush_cache(openslide_t *osr) {
         }
     }
 }
+#if 0
+typedef struct isyntax_cache_entry_t {
+    isyntax_tile_t* tile;
+    int scale;
+    int tile_col;
+    int tile_row;
+    struct isyntax_cache_entry_t* next;
+    struct isyntax_cache_entry_t* prev;
+} isyntax_cache_entry_t;
 
+typedef struct isyntax_cache_list_t {
+    struct isyntax_cache_entry_t* head;
+    struct isyntax_cache_entry_t* tail;
+} isyntax_cache_list_t;
+
+static isyntax_cache_entry_t* isyntax_cache_list_remove()
+
+};
+#endif
+
+static void tile_list_remove(isyntax_tile_list_t* list, isyntax_tile_t* tile) {
+    if (!tile->cache_next && !tile->cache_prev && !list->head == tile && !list->tail == tile) {
+        // Not part of any list.
+        return;
+    }
+    if (list->head == tile) {
+        list->head = tile->cache_next;
+    }
+    if (list->tail == tile) {
+        list->tail = tile->cache_prev;
+    }
+    if (tile->cache_prev) {
+        tile->cache_prev->cache_next = tile->cache_next;
+    }
+    if (tile->cache_next) {
+        tile->cache_next->cache_prev = tile->cache_prev;
+    }
+    // Here we assume that the tile is part of this list, but we don't check (O(n)).
+    tile->cache_next = NULL;
+    tile->cache_prev = NULL;
+    list->count--;
+}
+
+static void tile_list_insert_first(isyntax_tile_list_t* list, isyntax_tile_t* tile) {
+    ASSERT(tile->cache_next == NULL && tile->cache_prev == NULL);
+    if (list->head == NULL) {
+        list->head = tile;
+        list->tail = tile;
+    } else {
+        list->head->cache_prev = tile;
+        tile->cache_next = list->head;
+        list->head = tile;
+    }
+    list->count++;
+}
+
+static void tile_list_insert_list_first(isyntax_tile_list_t* target_list, isyntax_tile_list_t* source_list) {
+    source_list->tail->cache_next = target_list->head;
+    target_list->head->cache_prev = source_list->tail;
+
+    target_list->head = source_list->head;
+    if (target_list->tail == NULL) {
+        target_list->tail = source_list->tail;
+    }
+    target_list += source_list->count;
+    source_list->head = NULL;
+    source_list->tail = NULL;
+    source_list->count = 0;
+}
+
+
+static void isyntax_make_tile_lists_recursive(isyntax_t* isyntax, int scale, int tile_x, int tile_y,
+                                                           bool is_idwt,
+                                                           isyntax_tile_list_t* idwt_list,
+                                                           isyntax_tile_list_t* coeff_list,
+                                                           isyntax_tile_list_t* children_list,
+                                                           isyntax_tile_list_t* cache_list) {
+    isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
+    isyntax_level_t* level = &wsi->levels[scale];
+    if (tile_x < 0 || tile_x >= level->width_in_tiles || tile_y < 0 || tile_y >= level->height_in_tiles) {
+        return;
+    }
+
+    isyntax_tile_t* tile = &level->tiles[level->width_in_tiles * tile_y + tile_x];
+    if (tile->cache_marked || !tile->exists) {
+        return;
+    }
+
+    // The tiles are currently either in the flat cache list, or uncached.
+    tile_list_remove(cache_list, tile);
+    tile->cache_marked = true;
+    if (is_idwt) {
+        tile_list_insert_first(&idwt_list, tile);
+    } else {
+        tile_list_insert_first(&coeff_list, tile);
+    }
+
+    // First process neighbors so that their parents (who require idwt) will be visited before they are visited
+    // as neighbor of our parent. Consider:
+    //    A
+    //  B   C
+    // D E F
+    // If we start from E, and we visit B first, it will mark C as 'coeff_list' because all it needs is the
+    // coefficients. However, node F needs the idwt of node C, so if we visit F first, it will land in the right list
+    // on first visit, and we avoid relabeling.
+    for (int y_offset = -1; y_offset <= 1; ++y_offset) {
+        for (int x_offset = -1; x_offset <= 1; ++ x_offset) {
+            // Invalid, missing, or self (already visited) tiles will be ignored. Not sure optimizing the call here
+            // would speed anything up.
+            // Note: neighbors don't require idwt, only coefficients.
+            isyntax_make_tile_lists_recursive(isyntax, scale, tile_x + x_offset, tile_y + y_offset,
+                                              /*is_idwt=*/false, idwt_list, coeff_list, children_list, cache_list);
+        }
+    }
+
+    if (scale < isyntax->images[isyntax->wsi_image_index].max_scale) {
+        // Now process parent tile. This one will require idwt.
+        isyntax_make_tile_lists_recursive(isyntax, scale-1, tile_x / 2, tile_y / 2,
+                                          /*is_idwt=*/true, idwt_list, coeff_list, children_list, cache_list);
+    }
+
+    // Now add children of idwt, unless they were already added in the other lists.
+    // TODO(avirodov): if we store the idwt result (ll of next level) in the tile instead of the children, this
+    //  would be unnecessary. But I'm not sure this is bad either.
+    if (scale > 0) {
+        isyntax_level_t *next_level = &wsi->levels[scale - 1];
+        isyntax_tile_t *child_top_left = next_level->tiles + (tile_y * 2) * next_level->width_in_tiles + (tile_x * 2);
+        isyntax_tile_t *child_top_right = child_top_left + 1;
+        isyntax_tile_t *child_bottom_left = child_top_left + next_level->width_in_tiles;
+        isyntax_tile_t *child_bottom_right = child_bottom_left + 1;
+
+        tile_list_insert_first(&children_list, child_top_left);
+        tile_list_insert_first(&children_list, child_top_right);
+        tile_list_insert_first(&children_list, child_bottom_left);
+        tile_list_insert_first(&children_list, child_bottom_right);
+    }
+}
+
+void isyntax_openslide_load_tile_coefficients(isyntax_image_t* wsi, isyntax_tile_t* tile) {
+    isyntax_codeblock_t* codeblock = &wsi->codeblocks[tile->codeblock_index];
+
+    if (!tile->has_ll) {
+        // Assuming parents are loaded by now, so the codeblock ll must have been written if not top level.
+        ASSERT(tile->dbg_tile_scale == wsi->max_scale);
+
+
+
+    }
+    if (!tile->has_h) {
+
+    }
+}
+
+uint32_t* isyntax_openslide_idwt(isyntax_image_t* wsi, isyntax_tile_t* tile, bool return_rgb) {
+    return NULL;
+}
+
+#define ITERATE_TILE_LIST(_iter, _list) \
+    isyntax_tile_t* _iter = _list.head; _iter; _iter = _iter->cache_next
+
+static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int tile_x, int tile_y) {
+    isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
+
+    // Need 3 lists:
+    // 1. idwt list - those tiles will have to perform an idwt for their children to get ll coeffs. Primary cache bump.
+    // 2. coeff list - those tiles are nighbors and will need to have coefficients loaded. Secondary cache bump.
+    // 3. children list - those tiles will have their ll coeffs loaded as a side effect. Tertiary cache bump.
+    // Those lists must be disjoint, and sorted such that parents are closer to head than children.
+    isyntax_tile_list_t idwt_list = {NULL, NULL, 0};
+    isyntax_tile_list_t coeff_list = {NULL, NULL, 0};
+    isyntax_tile_list_t children_list = {NULL, NULL, 0};
+    isyntax_tile_list_t cache_list = {NULL, NULL, 0}; // TODO - place in global location.
+
+    // Lock.
+    // Make a list of all dependent tiles (including the required one).
+    // Mark all dependent tiles as "reserved" so that they are not evicted as we load them.
+    // Unlock.
+    isyntax_make_tile_lists_recursive(isyntax, scale, tile_x, tile_y, /*is_idwt=*/true,
+                                      &idwt_list, &coeff_list, &children_list, &cache_list);
+    // Unmark visit status and reserve all nodes (todo later).
+    for (ITERATE_TILE_LIST(tile, idwt_list))     { tile->cache_marked = false; }
+    for (ITERATE_TILE_LIST(tile, coeff_list))    { tile->cache_marked = false; }
+    for (ITERATE_TILE_LIST(tile, children_list)) { tile->cache_marked = false; }
+
+    // IO+decode: For all dependent tiles, read and decode coefficients where missing (hh, and ll for top tiles).
+    // Assuming lists are sorted parents first (by recursive construction).
+    // IDWT as needed, top to bottom. This should produce idwt for this tile as well, which should be last in idwt list.
+    // YCoCb->RGB for this tile only.
+    uint32_t* result = NULL;
+    for (ITERATE_TILE_LIST(tile, coeff_list)) {
+        isyntax_openslide_load_tile_coefficients(wsi, tile);
+    }
+    for (ITERATE_TILE_LIST(tile, idwt_list)) {
+        isyntax_openslide_load_tile_coefficients(wsi, tile);
+        if (tile == idwt_list.tail) {
+            result = isyntax_openslide_idwt(wsi, tile, /*return_rgb=*/true);
+        } else {
+            isyntax_openslide_idwt(wsi, tile, /*return_rgb=*/false);
+        }
+    }
+
+    // Lock.
+    // Bump all the affected tiles in cache.
+    // Unmark all dependent tiles as "referenced" so that they can be evicted.
+    // Perform cache trim (possibly not every invocation).
+    // Unlock.
+
+    tile_list_insert_list_first(&cache_list, &children_list);
+    tile_list_insert_list_first(&cache_list, &coeff_list);
+    tile_list_insert_list_first(&cache_list, &idwt_list);
+
+    return result;
+}
 
 static bool philips_isyntax_read_tile(
         openslide_t *osr,
@@ -204,10 +416,6 @@ static bool philips_isyntax_read_tile(
     philips_isyntax_level* pi_level = (philips_isyntax_level*)osr_level;
     isyntax_image_t* wsi_image = &isyntax->images[isyntax->wsi_image_index];
 
-    if (!wsi_image->first_load_complete) {
-        isyntax_do_first_load(osr, isyntax, wsi_image);
-    }
-
     // LOG("level=%d tile_col=%ld tile_row=%ld", pi_level->level_idx, tile_col, tile_row);
     // tile size
     int64_t tw = isyntax->tile_width;
@@ -219,59 +427,12 @@ static bool philips_isyntax_read_tile(
                                               pi_level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
-        LOG("### isyntax_load_tile(x=%ld, y=%ld scale=%d)", tile_col, tile_row, pi_level->isyntax_level->scale);
-        isyntax_level_t* stream_level = pi_level->isyntax_level;
-        i32 px_offset_x = 0;
-        i32 px_offset_y = 0;
-        float um_offset_x = px_offset_x * stream_level->um_per_pixel_x;
-        float um_offset_y = px_offset_y * stream_level->um_per_pixel_y;
-        bounds2f camera_bounds = {
-                .left = tile_col * stream_level->x_tile_side_in_um + um_offset_x,
-                .right = (tile_col + 1) * stream_level->x_tile_side_in_um + um_offset_x,
-                .top = tile_row * stream_level->y_tile_side_in_um + um_offset_y,
-                .bottom = (tile_row+1) * stream_level->y_tile_side_in_um + um_offset_y,
-        };
-        tile_streamer_t tile_streamer = {
-                .origin_offset = {
-                        //-pi_level->origin_offset.x,
-                        //-pi_level->origin_offset.y
-                        0, 0
-                },
-                .camera_center = {
-                        (camera_bounds.left + camera_bounds.right) / 2.0f,
-                        (camera_bounds.top + camera_bounds.bottom) / 2.0f
-                },
-                .camera_bounds = camera_bounds,
-                .is_cropped = false,
-                .zoom_level = pi_level->isyntax_level->scale,
-                .isyntax = isyntax,
-                .userdata = osr,
-        };
-        isyntax_stream_image_tiles(&tile_streamer);
-        // TODO(avirodov): assuming the streamer is hacked for immediate callback
-        //   execution. Otherwise need to wait here.
-        tiledata = _openslide_cache_get(osr->cache,
-                                        pi_level, tile_col, tile_row,
-                                        &cache_entry);
-        // If there is no tiledata, it is because the tile doesn't exist in the .isyntax file (empty tiles are not
-        // stored). Fill with background.
-        // TODO(avirodov): it may be possible the cache failed to fill for other reasons. Would be nice to know
-        //  specifically that this is due to tile->exists == false.
-        if (tiledata == NULL) {
-            LOG("missing tile (x=%ld, y=%ld), filling with background.", tile_col, tile_row);
-            tiledata = malloc(tw * th * 4);
-            memset(tiledata, 255, tw * th * 4);
-            annotate_tile(tiledata, pi_level->isyntax_level->scale, tile_col, tile_row, tw, th);
+        tiledata = isyntax_openslide_load_tile(isyntax, pi_level->isyntax_level->scale, tile_col, tile_row);
+        annotate_tile(tiledata, pi_level->isyntax_level->scale, tile_col, tile_row, tw, th);
 
-            _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
-                                 tiledata, tw * th * 4,
-                                 &cache_entry);
-        }
-        LOG("h_allocator=%d ll_allocator=%d\n", isyntax->h_coeff_block_allocator.use_count, isyntax->ll_coeff_block_allocator.use_count);
-        // TODO(avirodov): what is the right trigger size?
-        if (isyntax->h_coeff_block_allocator.use_count + isyntax->ll_coeff_block_allocator.use_count > 2000) {
-            philips_isyntax_flush_cache(osr);
-        }
+        _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
+                             tiledata, tw * th * 4,
+                             &cache_entry);
     }
 
     // draw it
