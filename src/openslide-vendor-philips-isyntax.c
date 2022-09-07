@@ -160,6 +160,10 @@ static void tile_list_insert_list_first(isyntax_tile_list_t* target_list, isynta
     source_list->count = 0;
 }
 
+#define ITERATE_TILE_LIST(_iter, _list) \
+    isyntax_tile_t* _iter = _list.head; _iter; _iter = _iter->cache_next
+
+
 void isyntax_openslide_load_tile_coefficients_ll_or_h(isyntax_t* isyntax, isyntax_tile_t* tile, int codeblock_index, bool is_ll) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     isyntax_data_chunk_t* chunk = &wsi->data_chunks[tile->data_chunk_index];
@@ -256,13 +260,15 @@ isyntax_tile_children_t isyntax_openslide_compute_children(isyntax_t* isyntax, i
 uint32_t* isyntax_openslide_idwt(isyntax_t* isyntax, isyntax_tile_t* tile, bool return_rgb) {
     if (tile->dbg_tile_scale == 0) {
         ASSERT(return_rgb); // Shouldn't be asking for idwt at level 0 if we're not going to use the result for pixels.
-        return isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index], tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y);
+        return isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index],
+                                 tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y, /*decode_rgb=*/true);
     }
 
     if (return_rgb) {
         // TODO(avirodov): if we want rgb from tile where idwt was done already, this could be cheaper if we store
         //  the lls in the tile. Currently need to recompute idwt.
-        return isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index], tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y);
+        return isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index],
+                                 tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y, /*decode_rgb=*/true);
     }
 
     // If all children have ll coefficients and we don't need the rgb pixels, no need to do the idwt.
@@ -273,17 +279,13 @@ uint32_t* isyntax_openslide_idwt(isyntax_t* isyntax, isyntax_tile_t* tile, bool 
             return NULL;
     }
 
-    // TODO(avirodov): pass the 'return_rgb' flag to isyntax_load_tile so that we don't compute rgb if we don't need it.
-    u32* result = isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index], tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y);
-    free(result);
+    isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index],
+                      tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y, /*decode_rgb=*/false);
     return NULL;
 }
 
-
-#define ITERATE_TILE_LIST(_iter, _list) \
-    isyntax_tile_t* _iter = _list.head; _iter; _iter = _iter->cache_next
-
-void isyntax_make_tile_lists_add_parent_to_list(isyntax_t* isyntax, isyntax_tile_t* tile, isyntax_tile_list_t* idwt_list, isyntax_tile_list_t* cache_list) {
+void isyntax_make_tile_lists_add_parent_to_list(isyntax_t* isyntax, isyntax_tile_t* tile,
+                                                isyntax_tile_list_t* idwt_list, isyntax_tile_list_t* cache_list) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     int parent_tile_scale = tile->dbg_tile_scale + 1;
     if (parent_tile_scale > wsi->max_scale) {
@@ -301,7 +303,8 @@ void isyntax_make_tile_lists_add_parent_to_list(isyntax_t* isyntax, isyntax_tile
     }
 }
 
-void isyntax_make_tile_lists_add_children_to_list(isyntax_t* isyntax, isyntax_tile_t* tile, isyntax_tile_list_t* children_list, isyntax_tile_list_t* cache_list) {
+void isyntax_make_tile_lists_add_children_to_list(isyntax_t* isyntax, isyntax_tile_t* tile,
+                                                  isyntax_tile_list_t* children_list, isyntax_tile_list_t* cache_list) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     if (tile->dbg_tile_scale > 0) {
         isyntax_tile_children_t children = isyntax_openslide_compute_children(isyntax, tile);

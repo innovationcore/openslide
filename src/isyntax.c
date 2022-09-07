@@ -1499,7 +1499,7 @@ u32 isyntax_idwt_tile_for_color_channel(isyntax_t* isyntax, isyntax_image_t* wsi
 	return invalid_edges;
 }
 
-u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y) {
+u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y, bool decode_rgb) {
     // printf("@@@ isyntax_load_tile scale=%d tile_x=%d tile_y=%d\n", scale, tile_x, tile_y);
 	isyntax_level_t* level = wsi->levels + scale;
 	ASSERT(tile_x >= 0 && tile_x < level->width_in_tiles);
@@ -1642,10 +1642,14 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
         }
     }
 
-
 	tile->is_loaded = true; // Meaning: it is now safe to start loading 'child' tiles of the next level
     tile->is_submitted_for_loading = false;
     tile->force_reload = false;
+
+    if (!decode_rgb) {
+        release_temp_memory(&temp_memory); // free Y, Co and Cg
+        return NULL;
+    }
 
 	// For the Y (luminance) color channel, we actually need the absolute value of the Y-channel wavelet coefficient.
 	// (This doesn't hold for Co and Cg, those are are used directly as signed integers)
