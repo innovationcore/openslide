@@ -67,16 +67,6 @@ void annotate_tile(uint32_t* tile_pixels, i32 scale, i32 tile_col, i32 tile_row,
 #endif
 }
 
-void submit_tile_completed(
-        void* userdata,
-        void* tile_pixels,
-        i32 scale,
-        i32 tile_index,
-        i32 tile_width G_GNUC_UNUSED,
-        i32 tile_height G_GNUC_UNUSED) {
- // TODO(avirodov): rm isyntax_streamer.c if no longer needed.
-}
-
 static bool philips_isyntax_detect(
         const char *filename,
         struct _openslide_tifflike *tl G_GNUC_UNUSED,

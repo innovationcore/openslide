@@ -17,7 +17,6 @@ src_libopenslide_la_LIBADD = $(GLIB2_LIBS) $(CAIRO_LIBS) $(SQLITE3_LIBS) \
 
 src_libopenslide_la_SOURCES = \
 	src/isyntax.c \
-	src/isyntax_streamer.c \
 	src/yxml.c \
 	src/linux_utils.c \
 	src/platform.c \
