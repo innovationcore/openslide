@@ -216,10 +216,11 @@ typedef struct isyntax_tile_t {
     struct isyntax_tile_t* cache_next;
     struct isyntax_tile_t* cache_prev;
 
-    // TODO(avirodov): hide behind compile flag. Useful for debug.
+    // TODO(avirodov): hide behind compile flag. Useful for debug. Or make proper, useful for marking algorithm too.
     int dbg_tile_scale;
     int dbg_tile_x;
     int dbg_tile_y;
+    struct isyntax_t* dbg_isyntax;
 } isyntax_tile_t;
 
 typedef struct isyntax_tile_list_t {

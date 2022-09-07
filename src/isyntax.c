@@ -2655,6 +2655,7 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
                         tile->dbg_tile_scale = scale;
                         tile->dbg_tile_x = tile_x;
                         tile->dbg_tile_y = tile_y;
+                        tile->dbg_isyntax = isyntax;
                     }
                 }
             }

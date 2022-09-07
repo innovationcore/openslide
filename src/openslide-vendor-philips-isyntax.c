@@ -467,11 +467,11 @@ static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isy
         tile_list_remove(&cache->cache_list, tile);
         for (int i = 0; i < 3; ++i) {
             if (tile->has_ll) {
-                block_free(&isyntax->ll_coeff_block_allocator, tile->color_channels[i].coeff_ll);
+                block_free(&tile->dbg_isyntax->ll_coeff_block_allocator, tile->color_channels[i].coeff_ll);
                 tile->color_channels[i].coeff_ll = NULL;
             }
             if (tile->has_h) {
-                block_free(&isyntax->h_coeff_block_allocator, tile->color_channels[i].coeff_h);
+                block_free(&tile->dbg_isyntax->h_coeff_block_allocator, tile->color_channels[i].coeff_h);
                 tile->color_channels[i].coeff_h = NULL;
             }
         }
