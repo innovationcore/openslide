@@ -226,6 +226,7 @@ typedef struct isyntax_tile_list_t {
     isyntax_tile_t* head;
     isyntax_tile_t* tail;
     int count;
+    const char* dbg_name;
 } isyntax_tile_list_t;
 
 typedef struct isyntax_level_t {
