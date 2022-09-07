@@ -2643,7 +2643,7 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 			free(read_buffer);
 
             // Populate debug info.
-            for (int scale = 0; scale < wsi_image->max_scale; ++scale) {
+            for (int scale = 0; scale < wsi_image->level_count; ++scale) {
                 isyntax_level_t* level = &wsi_image->levels[scale];
                 for (int tile_y = 0; tile_y < level->height_in_tiles; ++tile_y) {
                     for (int tile_x = 0; tile_x < level->width_in_tiles; ++tile_x) {
