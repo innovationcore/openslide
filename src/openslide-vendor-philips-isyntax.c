@@ -19,6 +19,21 @@ typedef struct philips_isyntax_level {
     struct _openslide_grid *grid;
 } philips_isyntax_level;
 
+typedef struct philips_isyntax_cache_t {
+    isyntax_tile_list_t cache_list;
+    GMutex mutex;
+    // int refcount;
+    int target_cache_size;
+} philips_isyntax_cache_t;
+
+typedef struct philips_isyntax_t {
+    isyntax_t* isyntax;
+    philips_isyntax_cache_t* cache;
+} philips_isyntax_t;
+
+// Global cache, shared between all opened files (if enabled). Thread-safe initialization in open().
+philips_isyntax_cache_t* philips_isyntax_global_cache_ptr = NULL;
+
 void draw_horiz_line(uint32_t* tile_pixels, i32 tile_width, i32 y, i32 start, i32 end, uint32_t color) {
     for (int x = start; x < end; ++x) {
         tile_pixels[y*tile_width + x] = color;
@@ -101,6 +116,13 @@ static bool philips_isyntax_detect(
 
     LOG("not isyntax.");
     return false;
+}
+
+static void tile_list_init(isyntax_tile_list_t* list, const char* dbg_name) {
+    list->head = NULL;
+    list->tail = NULL;
+    list->count = 0;
+    list->dbg_name = dbg_name;
 }
 
 static void tile_list_remove(isyntax_tile_list_t* list, isyntax_tile_t* tile) {
@@ -373,10 +395,11 @@ void isyntax_make_tile_lists_by_scale(isyntax_t* isyntax, int start_scale,
     }
 }
 
-// TODO(avirodov): better global location (configurable), locking.
-isyntax_tile_list_t cache_list = {NULL, NULL, 0, "cache_list"};
+static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isyntax_t* isyntax, int scale, int tile_x, int tile_y) {
+    // TODO(avirodov): more granular locking (some notes below). This will require handling overlapping work, that is
+    //  thread A needing tile 123 and started to load it, and thread B needing same tile 123 and needs to wait for A.
+    g_autoptr(GMutexLocker) locker G_GNUC_UNUSED = g_mutex_locker_new(&cache->mutex);
 
-static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int tile_x, int tile_y) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     // printf("=== isyntax_openslide_load_tile scale=%d tile_x=%d tile_y=%d\n", scale, tile_x, tile_y);
 
@@ -396,11 +419,11 @@ static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int 
     {
         isyntax_level_t* level = &wsi->levels[scale];
         isyntax_tile_t *tile = &level->tiles[level->width_in_tiles * tile_y + tile_x];
-        tile_list_remove(&cache_list, tile);
+        tile_list_remove(&cache->cache_list, tile);
         tile->cache_marked = true;
         tile_list_insert_first(&idwt_list, tile);
     }
-    isyntax_make_tile_lists_by_scale(isyntax, scale, &idwt_list, &coeff_list, &children_list, &cache_list);
+    isyntax_make_tile_lists_by_scale(isyntax, scale, &idwt_list, &coeff_list, &children_list, &cache->cache_list);
 
     // Unmark visit status and reserve all nodes (todo later).
     for (ITERATE_TILE_LIST(tile, idwt_list))     { tile->cache_marked = false; /*printf("@@@ idwt_list tile scale=%d x=%d y=%d\n", tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y);*/ }
@@ -432,17 +455,16 @@ static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int 
     // Perform cache trim (possibly not every invocation).
     // Unlock.
 
-    tile_list_insert_list_first(&cache_list, &children_list);
-    tile_list_insert_list_first(&cache_list, &coeff_list);
-    tile_list_insert_list_first(&cache_list, &idwt_list);
+    tile_list_insert_list_first(&cache->cache_list, &children_list);
+    tile_list_insert_list_first(&cache->cache_list, &coeff_list);
+    tile_list_insert_list_first(&cache->cache_list, &idwt_list);
 
     // Cache trim. Since we have the result already, it is possible that tiles from this run will be trimmed here
     // if cache is small or work happened on other threads.
-    const int target_cache_size = 2000; // TODO(avirodov): configurable.
     // TODO(avirodov): later will need to skip tiles that are reserved by other threads.
-    while (cache_list.count > target_cache_size) {
-        isyntax_tile_t* tile = cache_list.tail;
-        tile_list_remove(&cache_list, tile);
+    while (cache->cache_list.count > cache->target_cache_size) {
+        isyntax_tile_t* tile = cache->cache_list.tail;
+        tile_list_remove(&cache->cache_list, tile);
         for (int i = 0; i < 3; ++i) {
             if (tile->has_ll) {
                 block_free(&isyntax->ll_coeff_block_allocator, tile->color_channels[i].coeff_ll);
@@ -467,9 +489,8 @@ static bool philips_isyntax_read_tile(
         int64_t tile_col, int64_t tile_row,
         void *arg G_GNUC_UNUSED,
         GError **err) {
-    isyntax_t *isyntax = osr->data;
-    g_autoptr(GMutexLocker) locker G_GNUC_UNUSED =
-            g_mutex_locker_new(&isyntax->read_mutex);
+    philips_isyntax_t *data = osr->data;
+    isyntax_t* isyntax = data->isyntax;
 
     philips_isyntax_level* pi_level = (philips_isyntax_level*)osr_level;
     isyntax_image_t* wsi_image = &isyntax->images[isyntax->wsi_image_index];
@@ -479,13 +500,13 @@ static bool philips_isyntax_read_tile(
     int64_t tw = isyntax->tile_width;
     int64_t th = isyntax->tile_height;
 
-    // cache
+    // Openslide cache
     g_autoptr(_openslide_cache_entry) cache_entry = NULL;
     uint32_t *tiledata = _openslide_cache_get(osr->cache,
                                               pi_level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
-        tiledata = isyntax_openslide_load_tile(isyntax, pi_level->isyntax_level->scale, tile_col, tile_row);
+        tiledata = isyntax_openslide_load_tile(data->cache, isyntax, pi_level->isyntax_level->scale, tile_col, tile_row);
         annotate_tile(tiledata, pi_level->isyntax_level->scale, tile_col, tile_row, tw, th);
 
         _openslide_cache_put(osr->cache, pi_level, tile_col, tile_row,
@@ -509,6 +530,14 @@ static void add_float_property(openslide_t *osr, const char* property_name, floa
                         _openslide_format_double(value));
 }
 
+static philips_isyntax_cache_t* philips_isyntax_make_cache(const char* dbg_name, int cache_size) {
+    philips_isyntax_cache_t* cache_ptr = malloc(sizeof(philips_isyntax_cache_t));
+    tile_list_init(&cache_ptr->cache_list, dbg_name);
+    cache_ptr->target_cache_size = cache_size;
+    g_mutex_init(&cache_ptr->mutex);
+    return cache_ptr;
+}
+
 static bool philips_isyntax_open(
         openslide_t *osr,
         const char *filename,
@@ -522,35 +551,60 @@ static bool philips_isyntax_open(
     }
     LOG("Opening file %s", filename);
 
-    isyntax_t *data = malloc(sizeof(isyntax_t));
-    memset(data, 0, sizeof(isyntax_t));
+    philips_isyntax_t* data = malloc(sizeof(philips_isyntax_t));
+    data->isyntax = malloc(sizeof(isyntax_t));
+    memset(data->isyntax, 0, sizeof(isyntax_t));
+
+    // Initialize the cache (global, if requested).
+    bool is_global_cache = true;
+    int cache_size = 2000;
+    const char* str_is_global_cache = g_environ_getenv(g_get_environ(), "OPENSLIDE_ISYNTAX_GLOBAL_CACHE");
+    const char* str_cache_size = g_environ_getenv(g_get_environ(), "OPENSLIDE_ISYNTAX_CACHE_SIZE");
+    if (str_is_global_cache && *str_is_global_cache == '0') {
+        is_global_cache = false;
+    }
+    if (str_cache_size) {
+        cache_size = atoi(str_cache_size);
+    }
+    printf("philips_isyntax_open is_global_cache=%d cache_size=%d\n", (int)is_global_cache, cache_size);
+    if (is_global_cache) {
+        static GStaticMutex global_cache_init_mutex = G_STATIC_MUTEX_INIT;
+        g_autoptr(GMutexLocker) locker G_GNUC_UNUSED = g_mutex_locker_new(&global_cache_init_mutex);
+        if (philips_isyntax_global_cache_ptr == NULL) {
+            philips_isyntax_global_cache_ptr = philips_isyntax_make_cache("global_cache_list", cache_size);
+        }
+        data->cache = philips_isyntax_global_cache_ptr;
+    } else {
+        data->cache = philips_isyntax_make_cache("cache_list", cache_size);
+    }
+
     osr->data = data;
 
-    bool open_result = isyntax_open(data, filename);
+    bool open_result = isyntax_open(data->isyntax, filename);
     LOG_VAR("%d", (int)open_result);
     LOG_VAR("%d", data->image_count);
 
     LOG_VAR("%d", data->is_mpp_known);
-    if (data->is_mpp_known) {
+    if (data->isyntax->is_mpp_known) {
         LOG_VAR("%f", data->mpp_x);
         LOG_VAR("%f", data->mpp_y);
-        add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_X, data->mpp_x);
-        add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_Y, data->mpp_x);
+        add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_X, data->isyntax->mpp_x);
+        add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_Y, data->isyntax->mpp_x);
         const float float_equals_tolerance = 1e-5;
-        if (fabsf(data->mpp_x - data->mpp_y) < float_equals_tolerance) {
+        if (fabsf(data->isyntax->mpp_x - data->isyntax->mpp_y) < float_equals_tolerance) {
             // Compute objective power from microns-per-pixel, see e.g. table in "Scan Performance" here:
             // https://www.microscopesinternational.com/blog/20170928-whichobjective.aspx
-            float objective_power = 10.0f / data->mpp_x;
+            float objective_power = 10.0f / data->isyntax->mpp_x;
             LOG_VAR("%f", objective_power);
             add_float_property(osr, OPENSLIDE_PROPERTY_NAME_OBJECTIVE_POWER, objective_power);
         }
     }
 
     // Find wsi image. Extracting other images not supported. Assuming only one wsi.
-    int wsi_image_idx = data->wsi_image_index;
+    int wsi_image_idx = data->isyntax->wsi_image_index;
     LOG_VAR("%d", wsi_image_idx);
-    g_assert(wsi_image_idx >= 0 && wsi_image_idx < data->image_count);
-    isyntax_image_t* wsi_image = &data->images[wsi_image_idx];
+    g_assert(wsi_image_idx >= 0 && wsi_image_idx < data->isyntax->image_count);
+    isyntax_image_t* wsi_image = &data->isyntax->images[wsi_image_idx];
 
     // Store openslide information about each level.
     isyntax_level_t* levels = wsi_image->levels;
@@ -560,17 +614,17 @@ static bool philips_isyntax_open(
         philips_isyntax_level* level = malloc(sizeof(philips_isyntax_level));
         level->isyntax_level = &wsi_image->levels[i];
         level->base.downsample = levels[i].downsample_factor;
-        level->base.w = levels[i].width_in_tiles * data->tile_width;
-        level->base.h = levels[i].height_in_tiles * data->tile_height;
-        level->base.tile_w = data->tile_width;
-        level->base.tile_h = data->tile_height;
+        level->base.w = levels[i].width_in_tiles * data->isyntax->tile_width;
+        level->base.h = levels[i].height_in_tiles * data->isyntax->tile_height;
+        level->base.tile_w = data->isyntax->tile_width;
+        level->base.tile_h = data->isyntax->tile_height;
         osr->levels[i] = (struct _openslide_level*)level;
         level->grid = _openslide_grid_create_simple(
                 osr,
                 levels[i].width_in_tiles,
                 levels[i].height_in_tiles,
-                data->tile_width,
-                data->tile_height,
+                data->isyntax->tile_width,
+                data->isyntax->tile_height,
                 philips_isyntax_read_tile);
 
         // LOG_VAR("%d", data->images[wsi_image_idx].levels[i].scale);
@@ -590,7 +644,6 @@ static bool philips_isyntax_open(
         LOG_VAR("%d", (int)levels[i].is_fully_loaded);
     }
     osr->ops = &philips_isyntax_ops;
-    g_mutex_init(&data->read_mutex);
     return true;
 }
 
@@ -612,14 +665,31 @@ static bool philips_isyntax_paint_region(
 }
 
 static void philips_isyntax_destroy(openslide_t *osr) {
-    isyntax_t *data = osr->data;
+    philips_isyntax_t *data = osr->data;
+
     for (int i = 0; i < osr->level_count; ++i) {
         philips_isyntax_level* level = (philips_isyntax_level*)osr->levels[i];
         _openslide_grid_destroy(level->grid);
         free(level);
     }
+    // Flush cache (especially if global).
+    // TODO(avirodov): if we track for each tile (or cache entry) which isyntax_t* it came from, we can remove
+    //  only those entries from global cache.
+    if (data->cache == philips_isyntax_global_cache_ptr) {
+        g_autoptr(GMutexLocker) locker G_GNUC_UNUSED =
+                g_mutex_locker_new(&data->cache->mutex);
+        while (data->cache->cache_list.tail) {
+            tile_list_remove(&data->cache->cache_list, data->cache->cache_list.tail);
+        }
+
+    } else {
+        // Not shared (for now sharing is either global or none).
+        free(data->cache);
+    }
+
     free(osr->levels);
-    isyntax_destroy(data);
+    isyntax_destroy(data->isyntax);
+    free(data->isyntax);
     free(data);
 }
 

@@ -333,7 +333,6 @@ typedef struct isyntax_t {
 	block_allocator_t h_coeff_block_allocator;
 	float loading_time;
 	i32 refcount;
-    GMutex read_mutex; // TODO(avirodov): should we relax this? Not sure the streamer supports multithreaded querying.
 } isyntax_t;
 
 // function prototypes
