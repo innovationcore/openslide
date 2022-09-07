@@ -1499,7 +1499,7 @@ u32 isyntax_idwt_tile_for_color_channel(isyntax_t* isyntax, isyntax_image_t* wsi
 	return invalid_edges;
 }
 
-u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y, bool decode_rgb) {
+u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y, block_allocator_t* ll_coeff_block_allocator, bool decode_rgb) {
     // printf("@@@ isyntax_load_tile scale=%d tile_x=%d tile_y=%d\n", scale, tile_x, tile_y);
 	isyntax_level_t* level = wsi->levels + scale;
 	ASSERT(tile_x >= 0 && tile_x < level->width_in_tiles);
@@ -1557,25 +1557,25 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
 
         // TODO(avirodov): instead of releasing here, skip copy if still allocated.
         if (child_top_left->color_channels[color].coeff_ll) {
-            block_free(&isyntax->ll_coeff_block_allocator, child_top_left->color_channels[color].coeff_ll);
+            block_free(ll_coeff_block_allocator, child_top_left->color_channels[color].coeff_ll);
         }
         if (child_top_right->color_channels[color].coeff_ll) {
-            block_free(&isyntax->ll_coeff_block_allocator, child_top_right->color_channels[color].coeff_ll);
+            block_free(ll_coeff_block_allocator, child_top_right->color_channels[color].coeff_ll);
         }
         if (child_bottom_left->color_channels[color].coeff_ll) {
-            block_free(&isyntax->ll_coeff_block_allocator, child_bottom_left->color_channels[color].coeff_ll);
+            block_free(ll_coeff_block_allocator, child_bottom_left->color_channels[color].coeff_ll);
         }
         if (child_bottom_right->color_channels[color].coeff_ll) {
-            block_free(&isyntax->ll_coeff_block_allocator, child_bottom_right->color_channels[color].coeff_ll);
+            block_free(ll_coeff_block_allocator, child_bottom_right->color_channels[color].coeff_ll);
         }
 
         // NOTE: malloc() and free() can become a bottleneck, they don't scale well especially across many threads.
         // We use a custom block allocator to address this.
         i64 start_malloc = get_clock();
-        child_top_left->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(&isyntax->ll_coeff_block_allocator);
-        child_top_right->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(&isyntax->ll_coeff_block_allocator);
-        child_bottom_left->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(&isyntax->ll_coeff_block_allocator);
-        child_bottom_right->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(&isyntax->ll_coeff_block_allocator);
+        child_top_left->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(ll_coeff_block_allocator);
+        child_top_right->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(ll_coeff_block_allocator);
+        child_bottom_left->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(ll_coeff_block_allocator);
+        child_bottom_right->color_channels[color].coeff_ll = (icoeff_t*)block_alloc(ll_coeff_block_allocator);
         elapsed_malloc += get_seconds_elapsed(start_malloc, get_clock());
         i32 dest_stride = block_width;
         // Blit top left child LL block
@@ -2634,13 +2634,13 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 				goto failed;
 			}
 
-			size_t ll_coeff_block_size = isyntax->block_width * isyntax->block_height * sizeof(icoeff_t);
+			/*size_t ll_coeff_block_size = isyntax->block_width * isyntax->block_height * sizeof(icoeff_t);
 			size_t block_allocator_maximum_capacity_in_blocks = GIGABYTES(32) / ll_coeff_block_size;
 			size_t ll_coeff_block_allocator_capacity_in_blocks = block_allocator_maximum_capacity_in_blocks / 4;
 			size_t h_coeff_block_size = ll_coeff_block_size * 3;
 			size_t h_coeff_block_allocator_capacity_in_blocks = ll_coeff_block_allocator_capacity_in_blocks * 3;
 			isyntax->ll_coeff_block_allocator = block_allocator_create(ll_coeff_block_size, ll_coeff_block_allocator_capacity_in_blocks, MEGABYTES(256));
-			isyntax->h_coeff_block_allocator = block_allocator_create(h_coeff_block_size, h_coeff_block_allocator_capacity_in_blocks, MEGABYTES(256));
+			isyntax->h_coeff_block_allocator = block_allocator_create(h_coeff_block_size, h_coeff_block_allocator_capacity_in_blocks, MEGABYTES(256));*/
 
 			success = true;
 
@@ -2655,7 +2655,6 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
                         tile->dbg_tile_scale = scale;
                         tile->dbg_tile_x = tile_x;
                         tile->dbg_tile_y = tile_y;
-                        tile->dbg_isyntax = isyntax;
                     }
                 }
             }
@@ -2681,12 +2680,12 @@ void isyntax_destroy(isyntax_t* isyntax) {
 		do_worker_work(&global_work_queue, 0);
 #endif
 	}
-	if (isyntax->ll_coeff_block_allocator.is_valid) {
+	/*if (isyntax->ll_coeff_block_allocator.is_valid) {
 		block_allocator_destroy(&isyntax->ll_coeff_block_allocator);
 	}
 	if (isyntax->h_coeff_block_allocator.is_valid) {
 		block_allocator_destroy(&isyntax->h_coeff_block_allocator);
-	}
+	}*/
 	if (isyntax->black_dummy_coeff) {
 		free(isyntax->black_dummy_coeff);
 		isyntax->black_dummy_coeff = NULL;

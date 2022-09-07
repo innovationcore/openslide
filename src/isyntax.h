@@ -220,7 +220,6 @@ typedef struct isyntax_tile_t {
     int dbg_tile_scale;
     int dbg_tile_x;
     int dbg_tile_y;
-    struct isyntax_t* dbg_isyntax;
 } isyntax_tile_t;
 
 typedef struct isyntax_tile_list_t {
@@ -330,8 +329,8 @@ typedef struct isyntax_t {
 	i32 tile_height;
 	icoeff_t* black_dummy_coeff;
 	icoeff_t* white_dummy_coeff;
-	block_allocator_t ll_coeff_block_allocator;
-	block_allocator_t h_coeff_block_allocator;
+	// block_allocator_t ll_coeff_block_allocator;
+	// block_allocator_t h_coeff_block_allocator;
 	float loading_time;
 	i32 refcount;
 } isyntax_t;
@@ -342,7 +341,7 @@ bool isyntax_hulsken_decompress(u8 *compressed, size_t compressed_size, i32 bloc
 bool isyntax_open(isyntax_t* isyntax, const char* filename);
 void isyntax_destroy(isyntax_t* isyntax);
 void isyntax_idwt(icoeff_t* idwt, i32 quadrant_width, i32 quadrant_height, bool output_steps_as_png, const char* png_name);
-u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y, bool decode_rgb);
+u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y, block_allocator_t* ll_coeff_block_allocator, bool decode_rgb);
 u32 isyntax_get_adjacent_tiles_mask(isyntax_level_t* level, i32 tile_x, i32 tile_y);
 u32 isyntax_get_adjacent_tiles_mask_only_existing(isyntax_level_t* level, i32 tile_x, i32 tile_y);
 u32 isyntax_idwt_tile_for_color_channel(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y, i32 color, icoeff_t* dest_buffer);

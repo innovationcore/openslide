@@ -24,6 +24,10 @@ typedef struct philips_isyntax_cache_t {
     GMutex mutex;
     // int refcount;
     int target_cache_size;
+    block_allocator_t ll_coeff_block_allocator;
+    block_allocator_t h_coeff_block_allocator;
+    int allocator_block_width;
+    int allocator_block_height;
 } philips_isyntax_cache_t;
 
 typedef struct philips_isyntax_t {
@@ -186,7 +190,7 @@ static void tile_list_insert_list_first(isyntax_tile_list_t* target_list, isynta
     isyntax_tile_t* _iter = _list.head; _iter; _iter = _iter->cache_next
 
 
-void isyntax_openslide_load_tile_coefficients_ll_or_h(isyntax_t* isyntax, isyntax_tile_t* tile, int codeblock_index, bool is_ll) {
+void isyntax_openslide_load_tile_coefficients_ll_or_h(philips_isyntax_cache_t* cache, isyntax_t* isyntax, isyntax_tile_t* tile, int codeblock_index, bool is_ll) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     isyntax_data_chunk_t* chunk = &wsi->data_chunks[tile->data_chunk_index];
 
@@ -196,9 +200,9 @@ void isyntax_openslide_load_tile_coefficients_ll_or_h(isyntax_t* isyntax, isynta
         ASSERT(codeblock->color_component == color);
         ASSERT(codeblock->scale == tile->dbg_tile_scale);
         if (is_ll) {
-            tile->color_channels[color].coeff_ll = (icoeff_t *) block_alloc(&isyntax->ll_coeff_block_allocator);
+            tile->color_channels[color].coeff_ll = (icoeff_t *) block_alloc(&cache->ll_coeff_block_allocator);
         } else {
-            tile->color_channels[color].coeff_h = (icoeff_t *) block_alloc(&isyntax->h_coeff_block_allocator);
+            tile->color_channels[color].coeff_h = (icoeff_t *) block_alloc(&cache->h_coeff_block_allocator);
         }
         // TODO(avirodov): fancy allocators, for multiple sequential blocks (aka chunk). Or let OS do the caching.
         u8* codeblock_data = malloc(codeblock->block_size);
@@ -222,7 +226,7 @@ void isyntax_openslide_load_tile_coefficients_ll_or_h(isyntax_t* isyntax, isynta
     }
 }
 
-void isyntax_openslide_load_tile_coefficients(isyntax_t* isyntax, isyntax_tile_t* tile) {
+void isyntax_openslide_load_tile_coefficients(philips_isyntax_cache_t* cache, isyntax_t* isyntax, isyntax_tile_t* tile) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
 
     if (!tile->exists) {
@@ -232,7 +236,7 @@ void isyntax_openslide_load_tile_coefficients(isyntax_t* isyntax, isyntax_tile_t
     // Load LL codeblocks here only for top-level tiles. For other levels, the LL coefficients are computed from parent
     // tiles later on.
     if (!tile->has_ll && tile->dbg_tile_scale == wsi->max_scale) {
-        isyntax_openslide_load_tile_coefficients_ll_or_h(isyntax, tile, /*codeblock_index=*/tile->codeblock_index, /*is_ll=*/true);
+        isyntax_openslide_load_tile_coefficients_ll_or_h(cache, isyntax, tile, /*codeblock_index=*/tile->codeblock_index, /*is_ll=*/true);
     }
 
     if (!tile->has_h) {
@@ -252,7 +256,7 @@ void isyntax_openslide_load_tile_coefficients(isyntax_t* isyntax, isyntax_tile_t
             panic();
         }
 
-        isyntax_openslide_load_tile_coefficients_ll_or_h(isyntax, tile, /*codeblock_index=*/tile->codeblock_chunk_index + codeblock_index_in_chunk, /*is_ll=*/false);
+        isyntax_openslide_load_tile_coefficients_ll_or_h(cache, isyntax, tile, /*codeblock_index=*/tile->codeblock_chunk_index + codeblock_index_in_chunk, /*is_ll=*/false);
     }
 }
 
@@ -279,18 +283,20 @@ isyntax_tile_children_t isyntax_openslide_compute_children(isyntax_t* isyntax, i
 }
 
 
-uint32_t* isyntax_openslide_idwt(isyntax_t* isyntax, isyntax_tile_t* tile, bool return_rgb) {
+uint32_t* isyntax_openslide_idwt(philips_isyntax_cache_t* cache, isyntax_t* isyntax, isyntax_tile_t* tile, bool return_rgb) {
     if (tile->dbg_tile_scale == 0) {
         ASSERT(return_rgb); // Shouldn't be asking for idwt at level 0 if we're not going to use the result for pixels.
         return isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index],
-                                 tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y, /*decode_rgb=*/true);
+                                 tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y,
+                                 &cache->ll_coeff_block_allocator, /*decode_rgb=*/true);
     }
 
     if (return_rgb) {
         // TODO(avirodov): if we want rgb from tile where idwt was done already, this could be cheaper if we store
         //  the lls in the tile. Currently need to recompute idwt.
         return isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index],
-                                 tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y, /*decode_rgb=*/true);
+                                 tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y,
+                                 &cache->ll_coeff_block_allocator, /*decode_rgb=*/true);
     }
 
     // If all children have ll coefficients and we don't need the rgb pixels, no need to do the idwt.
@@ -302,7 +308,8 @@ uint32_t* isyntax_openslide_idwt(isyntax_t* isyntax, isyntax_tile_t* tile, bool 
     }
 
     isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index],
-                      tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y, /*decode_rgb=*/false);
+                      tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y,
+                      &cache->ll_coeff_block_allocator, /*decode_rgb=*/false);
     return NULL;
 }
 
@@ -401,7 +408,14 @@ static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isy
     g_autoptr(GMutexLocker) locker G_GNUC_UNUSED = g_mutex_locker_new(&cache->mutex);
 
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
+    isyntax_level_t* level = &wsi->levels[scale];
+    isyntax_tile_t *tile = &level->tiles[level->width_in_tiles * tile_y + tile_x];
     // printf("=== isyntax_openslide_load_tile scale=%d tile_x=%d tile_y=%d\n", scale, tile_x, tile_y);
+    if (!tile->exists) {
+        uint32_t* rgba = malloc(isyntax->tile_width * isyntax->tile_height * 4);
+        memset(rgba, 0xff, isyntax->tile_width * isyntax->tile_height * 4);
+        return rgba;
+    }
 
     // Need 3 lists:
     // 1. idwt list - those tiles will have to perform an idwt for their children to get ll coeffs. Primary cache bump.
@@ -417,8 +431,6 @@ static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isy
     // Mark all dependent tiles as "reserved" so that they are not evicted by other threads as we load them.
     // Unlock.
     {
-        isyntax_level_t* level = &wsi->levels[scale];
-        isyntax_tile_t *tile = &level->tiles[level->width_in_tiles * tile_y + tile_x];
         tile_list_remove(&cache->cache_list, tile);
         tile->cache_marked = true;
         tile_list_insert_first(&idwt_list, tile);
@@ -436,16 +448,16 @@ static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isy
     // YCoCb->RGB for this tile only.
     uint32_t* result = NULL;
     for (ITERATE_TILE_LIST(tile, coeff_list)) {
-        isyntax_openslide_load_tile_coefficients(isyntax, tile);
+        isyntax_openslide_load_tile_coefficients(cache, isyntax, tile);
     }
     for (ITERATE_TILE_LIST(tile, idwt_list)) {
-        isyntax_openslide_load_tile_coefficients(isyntax, tile);
+        isyntax_openslide_load_tile_coefficients(cache, isyntax, tile);
     }
     for (ITERATE_TILE_LIST(tile, idwt_list)) {
         if (tile == idwt_list.tail) {
-            result = isyntax_openslide_idwt(isyntax, tile, /*return_rgb=*/true);
+            result = isyntax_openslide_idwt(cache, isyntax, tile, /*return_rgb=*/true);
         } else {
-            isyntax_openslide_idwt(isyntax, tile, /*return_rgb=*/false);
+            isyntax_openslide_idwt(cache, isyntax, tile, /*return_rgb=*/false);
         }
     }
 
@@ -467,11 +479,11 @@ static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isy
         tile_list_remove(&cache->cache_list, tile);
         for (int i = 0; i < 3; ++i) {
             if (tile->has_ll) {
-                block_free(&tile->dbg_isyntax->ll_coeff_block_allocator, tile->color_channels[i].coeff_ll);
+                block_free(&cache->ll_coeff_block_allocator, tile->color_channels[i].coeff_ll);
                 tile->color_channels[i].coeff_ll = NULL;
             }
             if (tile->has_h) {
-                block_free(&tile->dbg_isyntax->h_coeff_block_allocator, tile->color_channels[i].coeff_h);
+                block_free(&cache->h_coeff_block_allocator, tile->color_channels[i].coeff_h);
                 tile->color_channels[i].coeff_h = NULL;
             }
         }
@@ -530,11 +542,21 @@ static void add_float_property(openslide_t *osr, const char* property_name, floa
                         _openslide_format_double(value));
 }
 
-static philips_isyntax_cache_t* philips_isyntax_make_cache(const char* dbg_name, int cache_size) {
+static philips_isyntax_cache_t* philips_isyntax_make_cache(const char* dbg_name, int cache_size, int block_width, int block_height) {
     philips_isyntax_cache_t* cache_ptr = malloc(sizeof(philips_isyntax_cache_t));
     tile_list_init(&cache_ptr->cache_list, dbg_name);
     cache_ptr->target_cache_size = cache_size;
     g_mutex_init(&cache_ptr->mutex);
+
+    cache_ptr->allocator_block_width = block_width;
+    cache_ptr->allocator_block_height = block_height;
+    size_t ll_coeff_block_size = block_width * block_height * sizeof(icoeff_t);
+    size_t block_allocator_maximum_capacity_in_blocks = GIGABYTES(32) / ll_coeff_block_size;
+    size_t ll_coeff_block_allocator_capacity_in_blocks = block_allocator_maximum_capacity_in_blocks / 4;
+    size_t h_coeff_block_size = ll_coeff_block_size * 3;
+    size_t h_coeff_block_allocator_capacity_in_blocks = ll_coeff_block_allocator_capacity_in_blocks * 3;
+    cache_ptr->ll_coeff_block_allocator = block_allocator_create(ll_coeff_block_size, ll_coeff_block_allocator_capacity_in_blocks, MEGABYTES(256));
+    cache_ptr->h_coeff_block_allocator = block_allocator_create(h_coeff_block_size, h_coeff_block_allocator_capacity_in_blocks, MEGABYTES(256));
     return cache_ptr;
 }
 
@@ -555,6 +577,17 @@ static bool philips_isyntax_open(
     data->isyntax = malloc(sizeof(isyntax_t));
     memset(data->isyntax, 0, sizeof(isyntax_t));
 
+    osr->data = data;
+    bool open_result = isyntax_open(data->isyntax, filename);
+    LOG_VAR("%d", (int)open_result);
+    LOG_VAR("%d", data->image_count);
+    if (!open_result) {
+        free(data->isyntax);
+        free(data);
+        g_prefix_error(err, "Can't open file.");
+        return false;
+    }
+
     // Initialize the cache (global, if requested).
     bool is_global_cache = true;
     int cache_size = 2000;
@@ -571,18 +604,20 @@ static bool philips_isyntax_open(
         static GStaticMutex global_cache_init_mutex = G_STATIC_MUTEX_INIT;
         g_autoptr(GMutexLocker) locker G_GNUC_UNUSED = g_mutex_locker_new(&global_cache_init_mutex);
         if (philips_isyntax_global_cache_ptr == NULL) {
-            philips_isyntax_global_cache_ptr = philips_isyntax_make_cache("global_cache_list", cache_size);
+            // Note: this requires that all opened files have the same block size. If that is not true, we
+            // will need to have allocator per size. Alternatively, implement allocator freeing after
+            // all tiles have been freed, and track isyntax_t per tile so we can access allocator.
+            philips_isyntax_global_cache_ptr = philips_isyntax_make_cache("global_cache_list", cache_size,
+                                                                          data->isyntax->block_width,
+                                                                          data->isyntax->block_height);
         }
         data->cache = philips_isyntax_global_cache_ptr;
     } else {
-        data->cache = philips_isyntax_make_cache("cache_list", cache_size);
+        data->cache = philips_isyntax_make_cache("cache_list", cache_size,
+                                                 data->isyntax->block_width, data->isyntax->block_height);
     }
-
-    osr->data = data;
-
-    bool open_result = isyntax_open(data->isyntax, filename);
-    LOG_VAR("%d", (int)open_result);
-    LOG_VAR("%d", data->image_count);
+    ASSERT(data->isyntax->block_width == data->cache->allocator_block_width);
+    ASSERT(data->isyntax->block_height == data->cache->allocator_block_height);
 
     LOG_VAR("%d", data->is_mpp_known);
     if (data->isyntax->is_mpp_known) {
@@ -684,6 +719,12 @@ static void philips_isyntax_destroy(openslide_t *osr) {
 
     } else {
         // Not shared (for now sharing is either global or none).
+        if (data->cache->ll_coeff_block_allocator.is_valid) {
+            block_allocator_destroy(&data->cache->ll_coeff_block_allocator);
+        }
+        if (data->cache->h_coeff_block_allocator.is_valid) {
+            block_allocator_destroy(&data->cache->h_coeff_block_allocator);
+        }
         free(data->cache);
     }
 
