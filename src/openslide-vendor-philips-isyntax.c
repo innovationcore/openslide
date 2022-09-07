@@ -544,6 +544,9 @@ void isyntax_make_tile_lists_by_scale(isyntax_t* isyntax, int start_scale,
     }
 }
 
+// TODO(avirodov): better global location (configurable), locking.
+isyntax_tile_list_t cache_list = {NULL, NULL, 0, "cache_list"};
+
 static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int tile_x, int tile_y) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     printf("=== isyntax_openslide_load_tile scale=%d tile_x=%d tile_y=%d\n", scale, tile_x, tile_y);
@@ -556,7 +559,6 @@ static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int 
     isyntax_tile_list_t idwt_list = {NULL, NULL, 0, "idwt_list"};
     isyntax_tile_list_t coeff_list = {NULL, NULL, 0, "coeff_list"};
     isyntax_tile_list_t children_list = {NULL, NULL, 0, "children_list"};
-    isyntax_tile_list_t cache_list = {NULL, NULL, 0, "cache_list"}; // TODO - place in global location.
 
     // Lock.
     // Make a list of all dependent tiles (including the required one).
@@ -574,8 +576,8 @@ static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int 
     //                                  &idwt_list, &coeff_list, &children_list, &cache_list);
 
     // Unmark visit status and reserve all nodes (todo later).
-    for (ITERATE_TILE_LIST(tile, idwt_list))     { tile->cache_marked = false; printf("@@@ idwt_list tile scale=%d x=%d y=%d\n", tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y); }
-    for (ITERATE_TILE_LIST(tile, coeff_list))    { tile->cache_marked = false; printf("@@@ coeff_list tile scale=%d x=%d y=%d\n", tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y); }
+    for (ITERATE_TILE_LIST(tile, idwt_list))     { tile->cache_marked = false; /*printf("@@@ idwt_list tile scale=%d x=%d y=%d\n", tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y);*/ }
+    for (ITERATE_TILE_LIST(tile, coeff_list))    { tile->cache_marked = false; /*printf("@@@ coeff_list tile scale=%d x=%d y=%d\n", tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y);*/ }
     for (ITERATE_TILE_LIST(tile, children_list)) { tile->cache_marked = false; /*printf("@@@ children_list tile scale=%d x=%d y=%d\n", tile->dbg_tile_scale, tile->dbg_tile_x, tile->dbg_tile_y);*/ }
 
     // IO+decode: For all dependent tiles, read and decode coefficients where missing (hh, and ll for top tiles).
@@ -606,6 +608,26 @@ static uint32_t* isyntax_openslide_load_tile(isyntax_t* isyntax, int scale, int 
     tile_list_insert_list_first(&cache_list, &children_list);
     tile_list_insert_list_first(&cache_list, &coeff_list);
     tile_list_insert_list_first(&cache_list, &idwt_list);
+
+    // Cache trim. Since we have the result already, it is possible that tiles from this run will be trimmed here
+    // if cache is small or work happened on other threads.
+    const int target_cache_size = 2000; // TODO(avirodov): configurable.
+    while (cache_list.count > target_cache_size) {
+        isyntax_tile_t* tile = cache_list.tail;
+        tile_list_remove(&cache_list, tile);
+        for (int i = 0; i < 3; ++i) {
+            if (tile->has_ll) {
+                block_free(&isyntax->ll_coeff_block_allocator, tile->color_channels[i].coeff_ll);
+                tile->color_channels[i].coeff_ll = NULL;
+            }
+            if (tile->has_h) {
+                block_free(&isyntax->h_coeff_block_allocator, tile->color_channels[i].coeff_h);
+                tile->color_channels[i].coeff_h = NULL;
+            }
+        }
+        tile->has_ll = false;
+        tile->has_h = false;
+    }
 
     return result;
 }
