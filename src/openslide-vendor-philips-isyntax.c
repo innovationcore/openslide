@@ -566,11 +566,16 @@ static bool philips_isyntax_open(
         struct _openslide_tifflike *tl G_GNUC_UNUSED,
         struct _openslide_hash *quickhash1 G_GNUC_UNUSED,
         GError **err) {
+    // Do not allow multithreading in opening.
+    static GStaticMutex static_open_mutex = G_STATIC_MUTEX_INIT;
+    g_static_mutex_lock(&static_open_mutex);
     static bool threadmemory_initialized = false;
     if (!threadmemory_initialized) {
         get_system_info(/*verbose=*/true);
         init_thread_memory(0);
+        threadmemory_initialized = true;
     }
+    g_static_mutex_unlock(&static_open_mutex);
     LOG("Opening file %s", filename);
 
     philips_isyntax_t* data = malloc(sizeof(philips_isyntax_t));
@@ -601,8 +606,7 @@ static bool philips_isyntax_open(
     }
     printf("philips_isyntax_open is_global_cache=%d cache_size=%d\n", (int)is_global_cache, cache_size);
     if (is_global_cache) {
-        static GStaticMutex global_cache_init_mutex = G_STATIC_MUTEX_INIT;
-        g_autoptr(GMutexLocker) locker G_GNUC_UNUSED = g_mutex_locker_new(&global_cache_init_mutex);
+        g_static_mutex_lock(&static_open_mutex);
         if (philips_isyntax_global_cache_ptr == NULL) {
             // Note: this requires that all opened files have the same block size. If that is not true, we
             // will need to have allocator per size. Alternatively, implement allocator freeing after
@@ -612,6 +616,7 @@ static bool philips_isyntax_open(
                                                                           data->isyntax->block_height);
         }
         data->cache = philips_isyntax_global_cache_ptr;
+        g_static_mutex_unlock(&static_open_mutex);
     } else {
         data->cache = philips_isyntax_make_cache("cache_list", cache_size,
                                                  data->isyntax->block_width, data->isyntax->block_height);
