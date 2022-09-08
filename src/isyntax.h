@@ -174,9 +174,9 @@ typedef struct isyntax_codeblock_t {
 	u32 coefficient;
 	u64 block_data_offset;
 	u64 block_size;
-	u32 block_header_template_id;
-	i32 x_adjusted;
-	i32 y_adjusted;
+	// u32 block_header_template_id;
+	// i32 x_adjusted;
+	// i32 y_adjusted;
 	i32 block_x;
 	i32 block_y;
 	u64 block_id;

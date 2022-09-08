@@ -422,7 +422,6 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 								codeblock->color_component = header->color_component;
 								codeblock->scale = header->scale;
 								codeblock->coefficient = header->coefficient;
-								codeblock->block_header_template_id = header->block_header_template_id;
 							}
 
 						} else if (sequence_element.size == 72) {
@@ -448,7 +447,6 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 								codeblock->coefficient = header->coefficient;
 								codeblock->block_data_offset = header->block_data_offset; // extra
 								codeblock->block_size = header->block_size; // extra
-								codeblock->block_header_template_id = header->block_header_template_id;
 							}
 						} else {
 							// TODO: handle error condition properly
@@ -2413,8 +2411,8 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 					isyntax_codeblock_t* codeblock = wsi_image->codeblocks + i;
 
 					// Calculate adjusted codeblock coordinates so that they fit the origin of the image
-					codeblock->x_adjusted = (i32)codeblock->x_coordinate - wsi_image->offset_x;
-					codeblock->y_adjusted = (i32)codeblock->y_coordinate - wsi_image->offset_y;
+					i32 x_adjusted = (i32)codeblock->x_coordinate - wsi_image->offset_x;
+					i32 y_adjusted = (i32)codeblock->y_coordinate - wsi_image->offset_y;
 
 					// Calculate the block ID (= index into the seektable)
 					// adapted from extract_block_header.py
@@ -2431,10 +2429,8 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 					} else {
 						offset = get_first_valid_coef_pixel(codeblock->scale);
 					}
-					i32 x = codeblock->x_adjusted - offset;
-					i32 y = codeblock->y_adjusted - offset;
-					codeblock->x_adjusted = x;
-					codeblock->y_adjusted = y;
+					i32 x = x_adjusted - offset;
+					i32 y = y_adjusted - offset;
 					codeblock->block_x = x / (tile_width << codeblock->scale);
 					codeblock->block_y = y / (tile_height << codeblock->scale);
 
