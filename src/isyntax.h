@@ -348,25 +348,6 @@ u32 isyntax_idwt_tile_for_color_channel(isyntax_t* isyntax, isyntax_image_t* wsi
 void isyntax_decompress_codeblock_in_chunk(isyntax_codeblock_t* codeblock, i32 block_width, i32 block_height, u8* chunk, u64 chunk_base_offset, i16* out_buffer);
 i32 isyntax_get_chunk_codeblocks_per_color_for_level(i32 level, bool has_ll);
 
-// TODO: move this somewhere suitable
-typedef struct tile_streamer_t {
-    v2f origin_offset;
-    v2f camera_center;
-    bounds2f camera_bounds;
-    bool is_cropped;
-    i32 zoom_level;
-    isyntax_t* isyntax;
-    void* userdata;
-} tile_streamer_t;
-
-void isyntax_begin_first_load(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi_image);
-void isyntax_begin_load_tile(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y);
-void isyntax_do_first_load(void* userdata, isyntax_t* isyntax, isyntax_image_t* wsi);
-void isyntax_stream_image_tiles(tile_streamer_t* tile_streamer);
-
-// TODO(avirodov): Implement as proper callback.
-void submit_tile_completed(void* userdata, void* tile_pixels, i32 scale, i32 tile_index, i32 tile_width, i32 tile_height);
-
 #ifdef __cplusplus
 }
 #endif

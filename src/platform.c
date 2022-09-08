@@ -19,6 +19,7 @@
 #define PANIC_IMPLEMENTATION
 #define STB_DS_IMPLEMENTATION
 #include "common.h"
+#include <glib.h> // For G_GNUC_UNUSED
 
 #define PLATFORM_IMPL
 #include "platform.h"
@@ -33,7 +34,7 @@
 #endif
 
 
-u8* platform_alloc(size_t size) {
+static u8* platform_alloc(size_t size) {
     u8* result = (u8*) malloc(size);
     if (!result) {
         printf("Error: memory allocation failed!\n");
@@ -63,7 +64,7 @@ mem_t* platform_read_entire_file(const char* filename) {
 				result->len = filesize;
 				result->capacity = filesize;
 				size_t bytes_read = file_stream_read(result->data, filesize, fp);
-				if (bytes_read != filesize) {
+				if ((i64)bytes_read != filesize) {
 					panic();
 				}
 			}
@@ -82,15 +83,17 @@ u64 file_read_at_offset(void* dest, file_stream_t fp, u64 offset, u64 num_bytes)
 	return result;
 }
 
-bool file_exists(const char* filename) {
+#if 0
+static bool file_exists(const char* filename) {
 	return (access(filename, F_OK) != -1);
 }
 
-bool is_directory(const char* path) {
+static bool is_directory(const char* path) {
 	struct stat st = {0};
 	platform_stat(path, &st);
 	return S_ISDIR(st.st_mode);
 }
+#endif
 
 
 void get_system_info(bool verbose) {
@@ -119,12 +122,11 @@ void get_system_info(bool verbose) {
 }
 
 
-#if !IS_SERVER
+#if !IS_SERVER && false
 
 //TODO: move this
 bool profiling = false;
-
-i64 profiler_end_section(i64 start, const char* name, float report_threshold_ms) {
+static i64 profiler_end_section(i64 start, const char* name, float report_threshold_ms) {
 	i64 end = get_clock();
 	if (profiling) {
 		float ms_elapsed = get_seconds_elapsed(start, end) * 1000.0f;
@@ -279,7 +281,7 @@ void* block_alloc(block_allocator_t* allocator) {
 		ASSERT(allocator->used_chunks >= 1);
 		i32 chunk_index = allocator->used_chunks-1;
 		block_allocator_chunk_t* current_chunk = allocator->chunks + chunk_index;
-		if (current_chunk->used_blocks < allocator->chunk_capacity_in_blocks) {
+		if (current_chunk->used_blocks < (size_t)allocator->chunk_capacity_in_blocks) {
 			i32 block_index = current_chunk->used_blocks++;
 			result = current_chunk->memory + block_index * allocator->block_size;
 		} else {
@@ -333,7 +335,7 @@ void block_free(block_allocator_t* allocator, void* ptr_to_free) {
 
 }
 
-void init_thread_memory(i32 logical_thread_index) {
+void init_thread_memory(i32 logical_thread_index G_GNUC_UNUSED) {
 	// Allocate a private memory buffer
 	u64 thread_memory_size = MEGABYTES(16);
 	local_thread_memory = (thread_memory_t*) platform_alloc(thread_memory_size); // how much actually needed?

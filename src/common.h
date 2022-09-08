@@ -301,8 +301,6 @@ PANIC_INLINE_SPECIFIER void _panic(const char* source_filename, i32 line, const 
     ;enum { ASSERT_CONCAT(assert_line_, __LINE__) = 1/(int)(!!(e)) }
 #endif
 
-#define DUMMY_STATEMENT do { int __x = 5; } while(0)
-
 FORCE_INLINE u64 next_pow2(u64 x) {
 	ASSERT(x > 1);
 	x -= 1;

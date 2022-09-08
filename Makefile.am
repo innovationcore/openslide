@@ -20,7 +20,6 @@ src_libopenslide_la_SOURCES = \
 	src/yxml.c \
 	src/linux_utils.c \
 	src/platform.c \
-	src/work_queue.c \
 	src/jpeg_decoder.c \
 	src/openslide.c \
 	src/openslide-cache.c \

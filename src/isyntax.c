@@ -70,7 +70,7 @@
 static const unsigned char base64_table[65] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-unsigned char * base64_decode(const unsigned char *src, size_t len,
+static unsigned char * base64_decode(const unsigned char *src, size_t len,
                               size_t *out_len)
 {
 	unsigned char dtable[256], *out, *pos, block[4], tmp;
@@ -155,7 +155,9 @@ static void parse_three_integers(const char* str, i32* first, i32* second, i32* 
 	atoi_and_advance(str, third);
 }
 
-static void isyntax_parse_ufsimport_child_node(isyntax_t* isyntax, u32 group, u32 element, char* value, u64 value_len) {
+static void isyntax_parse_ufsimport_child_node(isyntax_t* isyntax G_GNUC_UNUSED,
+                                               u32 group, u32 element,
+                                               char* value G_GNUC_UNUSED, u64 value_len G_GNUC_UNUSED) {
 
 	switch(group) {
 		default: {
@@ -275,7 +277,6 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 					}
 				} break;
 				case 0x1005: { /*PIM_DP_IMAGE_DATA*/
-					size_t decoded_capacity = value_len;
 					size_t decoded_len = 0;
 					i32 last_char = value[value_len-1];
 					if (last_char == '/') {
@@ -346,7 +347,6 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 							case 3: template->scale = range.start; break;
 							case 4: template->waveletcoeff = (range.start == 0) ? 1 : 3; break;
 						}
-						DUMMY_STATEMENT;
 					} else if (isyntax->parser.data_object_flags & ISYNTAX_OBJECT_UFSImageGeneralHeader) {
 						switch(isyntax->parser.dimension_index) {
 							default: break;
@@ -365,15 +365,12 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 							} break;
 							case 4: break; // always 4 wavelet coefficients ("LL" "LH" "HL" "HH"), no need to check
 						}
-						DUMMY_STATEMENT;
 					}
-					DUMMY_STATEMENT;
 				} break;
 				case 0x200C: /*UFS_IMAGE_DIMENSION_IN_BLOCK*/               {} break;
 				case 0x200F: /*UFS_IMAGE_BLOCK_COMPRESSION_METHOD*/         {} break;
 				case 0x2013: /*UFS_IMAGE_PIXEL_TRANSFORMATION_METHOD*/      {} break;
 				case 0x2014: { /*UFS_IMAGE_BLOCK_HEADER_TABLE*/
-					size_t decoded_capacity = value_len;
 					size_t decoded_len = 0;
 					i32 last_char = value[value_len-1];
 #if 0
@@ -400,7 +397,7 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 						if (sequence_element.size == 40) {
 							// We have a partial header structure, with 'Block Data Offset' and 'Block Size' missing (stored in Seektable)
 							// Full block header size (including the sequence element) is 48 bytes
-							u32 block_count = header_size / 48;
+							i32 block_count = header_size / 48;
 							u32 should_be_zero = header_size % 48;
 							if (should_be_zero != 0) {
 								// TODO: handle error condition properly
@@ -420,12 +417,11 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 								codeblock->scale = header->scale;
 								codeblock->coefficient = header->coefficient;
 								codeblock->block_header_template_id = header->block_header_template_id;
-								DUMMY_STATEMENT;
 							}
 
 						} else if (sequence_element.size == 72) {
 							// We have the complete header structure. (Nothing stored in Seektable)
-							u32 block_count = header_size / 80;
+							i32 block_count = header_size / 80;
 							u32 should_be_zero = header_size % 80;
 							if (should_be_zero != 0) {
 								// TODO: handle error condition properly
@@ -447,7 +443,6 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 								codeblock->block_data_offset = header->block_data_offset; // extra
 								codeblock->block_size = header->block_size; // extra
 								codeblock->block_header_template_id = header->block_header_template_id;
-								DUMMY_STATEMENT;
 							}
 						} else {
 							// TODO: handle error condition properly
@@ -528,7 +523,7 @@ static void push_to_buffer_maybe_grow(u8** restrict dest, size_t* restrict dest_
 	*dest_len = new_len;
 }
 
-bool isyntax_parse_xml_header(isyntax_t* isyntax, char* xml_header, i64 chunk_length, bool is_last_chunk) {
+static bool isyntax_parse_xml_header(isyntax_t* isyntax, char* xml_header, i64 chunk_length, bool is_last_chunk) {
 
 	yxml_t* x = NULL;
 	bool success = false;
@@ -845,8 +840,11 @@ bool isyntax_parse_xml_header(isyntax_t* isyntax, char* xml_header, i64 chunk_le
 																			  parser->current_dicom_group_tag,
 																			  parser->current_dicom_element_tag,
 																			  parser->contentbuf, parser->contentlen);
-									}
-
+                                        if (!parse_ok) {
+                                            console_print_error("yxml_parse(): isyntax_parse_scannedimage_child_node failed.\n");
+                                            goto failed;
+                                        }
+                                    }
 								}
 							}
 						} else if (parser->current_node_type == ISYNTAX_NODE_BRANCH) {
@@ -906,7 +904,7 @@ static inline i32 twos_complement_to_signed_magnitude(u32 x) {
 static void signed_magnitude_to_twos_complement_16_block(u16* data, u32 len) {
 #if defined(__SSE2__)
 	// Fast SIMD version
-	i32 i;
+	u32 i;
 	for (i = 0; i < len; i += 8) {
 		__m128i x = _mm_loadu_si128((__m128i*)(data + i));
 		__m128i sign_masks = _mm_srai_epi16(x, 15); // 0x0000 if positive, 0xFFFF if negative
@@ -936,7 +934,7 @@ static void signed_magnitude_to_twos_complement_16_block(u16* data, u32 len) {
 static void convert_to_absolute_value_16_block(i16* data, u32 len) {
 #if defined(__SSE2__)
 	// Fast SIMD version
-	i32 i;
+	u32 i;
 	for (i = 0; i < len; i += 8) {
 		__m128i x = _mm_loadu_si128((__m128i*)(data + i));
 		__m128i sign_masks = _mm_srai_epi16(x, 15); // 0x0000 if positive, 0xFFFF if negative
@@ -963,7 +961,7 @@ static void convert_to_absolute_value_16_block(i16* data, u32 len) {
 }
 
 
-void debug_convert_wavelet_coefficients_to_image2(icoeff_t* coefficients, i32 width, i32 height, const char* filename) {
+static void debug_convert_wavelet_coefficients_to_image2(icoeff_t* coefficients, i32 width, i32 height, const char* filename G_GNUC_UNUSED) {
 	if (coefficients) {
 		u8* decoded_8bit = (u8*)malloc(width*height);
 		for (i32 i = 0; i < width * height; ++i) {
@@ -978,6 +976,7 @@ void debug_convert_wavelet_coefficients_to_image2(icoeff_t* coefficients, i32 wi
 	}
 }
 
+#if 0
 #if (DWT_COEFF_BITS==16)
 static u32 wavelet_coefficient_to_color_value(icoeff_t coefficient) {
 	u32 magnitude = ((u32)signed_magnitude_to_twos_complement_16(coefficient) & ~0x8000);
@@ -995,19 +994,19 @@ static rgba_t ycocg_to_rgb(i32 Y, i32 Co, i32 Cg) {
 	i32 G = tmp + Cg;
 	i32 B = tmp - Co/2;
 	i32 R = B + Co;
-	return (rgba_t){ATMOST(255, R), ATMOST(255, G), ATMOST(255, B), 255};
+	return (rgba_t) {{{ATMOST(255, R), ATMOST(255, G), ATMOST(255, B), 255}}};
 }
+#endif
 
 static rgba_t ycocg_to_bgr(i32 Y, i32 Co, i32 Cg) {
 	i32 tmp = Y - Cg/2;
 	i32 G = tmp + Cg;
 	i32 B = tmp - Co/2;
 	i32 R = B + Co;
-	return (rgba_t){ATMOST(255, B), ATMOST(255, G), ATMOST(255, R), 255};
+	return (rgba_t) {{{ATMOST(255, B), ATMOST(255, G), ATMOST(255, R), 255}}};
 }
 
 static u32* convert_ycocg_to_bgra_block(icoeff_t* Y, icoeff_t* Co, icoeff_t* Cg, i32 width, i32 height, i32 stride) {
-	i32 first_valid_pixel = ISYNTAX_IDWT_FIRST_VALID_PIXEL;
 	u32* bgra = (u32*)malloc(width * height * sizeof(u32)); // TODO: performance: block allocator
 
 	i64 start = get_clock();
@@ -1195,7 +1194,8 @@ u32 isyntax_get_adjacent_tiles_mask_only_existing(isyntax_level_t* level, i32 ti
 	return mask;
 }
 
-u32 isyntax_get_adjacent_tiles_mask_with_missing_ll_coeff(isyntax_level_t* level, i32 tile_x, i32 tile_y) {
+#if 0
+static u32 isyntax_get_adjacent_tiles_mask_with_missing_ll_coeff(isyntax_level_t* level, i32 tile_x, i32 tile_y) {
 	u32 adjacent = isyntax_get_adjacent_tiles_mask(level, tile_x, tile_y);
 	u32 mask = 0;
 	if (adjacent & ISYNTAX_ADJ_TILE_TOP_LEFT) {
@@ -1248,6 +1248,7 @@ static size_t get_idwt_buffer_size(i32 block_width, i32 block_height) {
 	size_t idwt_buffer_size = full_width * full_height * sizeof(icoeff_t);
 	return idwt_buffer_size;
 }
+#endif
 
 u32 isyntax_idwt_tile_for_color_channel(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 tile_x, i32 tile_y, i32 color, icoeff_t* dest_buffer) {
 	isyntax_level_t* level = wsi->levels + scale;
@@ -1270,7 +1271,6 @@ u32 isyntax_idwt_tile_for_color_channel(isyntax_t* isyntax, isyntax_image_t* wsi
 	i32 quadrant_width = block_width + pad_l_plus_r;
 	i32 quadrant_height = block_height + pad_l_plus_r;
 	i32 full_width = 2 * quadrant_width;
-	i32 full_height = 2 * quadrant_height;
 	icoeff_t* idwt = dest_buffer; // allocated/given by the caller ahead of time
 
 	i32 dest_stride = full_width;
@@ -1507,7 +1507,6 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
 	isyntax_tile_t* tile = level->tiles + tile_y * level->width_in_tiles + tile_x;
 	i32 block_width = isyntax->block_width;
 	i32 block_height = isyntax->block_height;
-	size_t block_size = block_width * block_height * sizeof(icoeff_t);
 	i32 first_valid_pixel = ISYNTAX_IDWT_FIRST_VALID_PIXEL;
 	i32 idwt_width = 2 * (block_width + ISYNTAX_IDWT_PAD_L + ISYNTAX_IDWT_PAD_R);
 	i32 idwt_height = 2 * (block_height + ISYNTAX_IDWT_PAD_L + ISYNTAX_IDWT_PAD_R);
@@ -1664,8 +1663,8 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
 	u32* bgra = convert_ycocg_to_bgra_block(Y + valid_offset, Co + valid_offset, Cg + valid_offset,
 											tile_width, tile_height, idwt_stride);
 
-	//		float elapsed_rgb = get_seconds_elapsed(start, get_clock());
-	//	console_print_verbose("load: scale=%d x=%d y=%d  idwt time =%g  rgb transform time=%g  malloc time=%g\n", scale, tile_x, tile_y, elapsed_idwt, elapsed_rgb, elapsed_malloc);
+	float elapsed_rgb = get_seconds_elapsed(start, get_clock());
+	console_print_verbose("load: scale=%d x=%d y=%d  idwt time =%g  rgb transform time=%g  malloc time=%g\n", scale, tile_x, tile_y, elapsed_idwt, elapsed_rgb, elapsed_malloc);
 
 	/*if (scale == wsi->max_scale && tile_x == 1 && tile_y == 1) {
 		stbi_write_png("debug_dwt_output.png", tile_width, tile_height, 4, bgra, tile_width * 4);
@@ -1743,10 +1742,10 @@ typedef struct huffman_t {
 	u16 nonfast_size_masks[256+7]; // extra safety bytes for SIMD vector operations
 } huffman_t;
 
-void save_code_in_huffman_fast_lookup_table(huffman_t* h, u32 code, u32 code_width, u8 symbol) {
+static void save_code_in_huffman_fast_lookup_table(huffman_t* h, u32 code, u32 code_width, u8 symbol) {
 	ASSERT(code_width <= HUFFMAN_FAST_BITS);
 	i32 duplicate_bits = HUFFMAN_FAST_BITS - code_width;
-	for (u32 i = 0; i < (1 << duplicate_bits); ++i) {
+	for (u32 i = 0; i < (u32)(1 << duplicate_bits); ++i) {
 		u32 address = (i << code_width) | code;
 		h->fast[address] = symbol;
 	}
@@ -1820,7 +1819,7 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 	}
 
 	// Check that the serialized length is sane
-	if (serialized_length > 2 * coeff_buffer_size) {
+	if (serialized_length > (i64)(2 * coeff_buffer_size)) {
 		ASSERT(!"serialized_length too large");
 		console_print_error("Error: isyntax_hulsken_decompress(): invalid codeblock, serialized_length too large (%lld)\n", serialized_length);
 		memset(out_buffer, 0, coeff_buffer_size);
@@ -1905,7 +1904,7 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 				++nonfast_symbol_index;
 				++nonfast_count;
 			}
-			if (code_size > max_code_size) {
+			if ((u32)code_size > max_code_size) {
 				max_code_size = code_size;
 //			    console_print("found the biggest code size: %d\n", code_size);
 			}
@@ -1991,7 +1990,6 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 					break;
 				}
 			}
-			DUMMY_STATEMENT;
 #endif
 			if (!match) {
 				ASSERT(!"out of bounds");
@@ -2068,10 +2066,6 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 
 	i32 bytes_per_bitplane = (block_width * block_height) / 8;
 	if (compressor_version == 1) {
-
-		i32 bytes_per_sample = 2; // ((coeff_bit_depth+7)/8);
-		i32 expected_bitmask_bits = (decompressed_length*8) / (block_width * block_height);
-
 		// Try to deduce the number of coefficients without knowing the header information
 		// NOTE: This is actually not necessary, because we do know coeff_count from the header.
 		i32 extra_bits = (decompressed_length*8) % (block_width * block_height);
@@ -2086,7 +2080,7 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 
 		// If there are empty bitplanes: bitmasks stored at end of data
 		u64 expected_length = total_mask_bits * bytes_per_bitplane;
-		if (decompressed_length < expected_length) {
+		if ((u64)decompressed_length < expected_length) {
 			if (coeff_count == 1) {
 				bitmasks[0] = *(u16*)(decompressed_buffer + decompressed_length - 2);
 				total_mask_bits = popcount(bitmasks[0]);
@@ -2100,7 +2094,7 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 				panic("invalid coeff_count");
 			}
 			expected_length = (total_mask_bits * block_width * block_height) / 8 + (coeff_count * 2);
-			ASSERT(decompressed_length == expected_length);
+			ASSERT((u64)decompressed_length == expected_length);
 		}
 	}
 
@@ -2149,7 +2143,6 @@ bool isyntax_hulsken_decompress(u8* compressed, size_t compressed_size, i32 bloc
 					__m128i result = _mm_or_si128(*dst, masks);
 					*dst = result;
 #endif
-					DUMMY_STATEMENT;
 				}
 				++compressed_bitplane_index;
 			}
@@ -2273,7 +2266,6 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 
 	char* read_buffer = NULL;
 	isyntax_seektable_codeblock_header_t* seektable = NULL;
-	isyntax_data_chunk_t* data_chunks_memory = NULL;
 
 	if (0) { failed:
 		if (fp) file_stream_close(fp);
@@ -2321,14 +2313,12 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 			// find EOT candidates, 3 bytes "\r\n\x04"
 			i64 header_length = 0;
 			i64 isyntax_data_offset = 0; // Offset of either the Seektable, or the Codeblocks segment of the iSyntax file.
-			i64 bytes_read_from_data_offset_in_last_chunk = 0;
 
 			i32 chunk_index = 0;
 			for (;; ++chunk_index) {
 //				console_print_verbose("iSyntax: reading XML header chunk %d\n", chunk_index);
 				i64 chunk_length = 0;
 				bool match = false;
-				char* pos = read_buffer;
 				i64 offset = 0;
 				char* marker = (char*)memchr(read_buffer, '\x04', bytes_read);
 				if (marker) {
@@ -2337,8 +2327,6 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 					chunk_length = offset;
 					header_length += chunk_length;
 					isyntax_data_offset = header_length + 1;
-					i64 data_offset_in_last_chunk = offset + 1;
-					bytes_read_from_data_offset_in_last_chunk = (i64)bytes_read - data_offset_in_last_chunk;
 				}
 				if (match) {
 					// We found the end of the XML header. This is the last chunk to process.
@@ -2425,7 +2413,6 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 				// The highest level has LL tiles in addition to LH/HL/HH tiles
 				i64 ll_coeff_tile_count = base_level_tile_count >> ((num_levels - 1) * 2);
 				i64 total_coeff_tile_count = h_coeff_tile_count + ll_coeff_tile_count;
-				i64 total_codeblock_count = total_coeff_tile_count * 3; // for 3 color channels
 
 				for (i32 i = 0; i < wsi_image->codeblock_count; ++i) {
 					isyntax_codeblock_t* codeblock = wsi_image->codeblocks + i;
@@ -2490,7 +2477,7 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 						// the seektable entries.
 						// Luckily, we can easily identify the entries that need to be discarded.
 						// (They have the data offset (and data size) set to 0.)
-						i32 seektable_entry_count = seektable_size / sizeof(isyntax_seektable_codeblock_header_t);
+						u64 seektable_entry_count = seektable_size / sizeof(isyntax_seektable_codeblock_header_t);
 
 						for (i32 i = 0; i < wsi_image->codeblock_count; ++i) {
 							isyntax_codeblock_t* codeblock = wsi_image->codeblocks + i;
@@ -2573,7 +2560,7 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 							if (i == next_chunk_codeblock_index) {
 								// This codeblock is the top of a new chunk
 								i32 chunk_codeblock_count_per_color;
-								if (codeblock->scale == wsi_image->max_scale) {
+								if (codeblock->scale == (u32)wsi_image->max_scale) {
 									chunk_codeblock_count_per_color = isyntax_get_chunk_codeblocks_per_color_for_level(codeblock->scale, true);
 								} else {
 									chunk_codeblock_count_per_color = 21;
@@ -2596,7 +2583,7 @@ bool isyntax_open(isyntax_t* isyntax, const char* filename) {
 							}
 							isyntax_level_t* level = wsi_image->levels + codeblock->scale;
 							i32 tile_index = codeblock->block_y * level->width_in_tiles + codeblock->block_x;
-							ASSERT(tile_index < level->tile_count);
+							ASSERT((u64)tile_index < level->tile_count);
 							level->tiles[tile_index].exists = true;
 							level->tiles[tile_index].codeblock_index = i;
 							level->tiles[tile_index].codeblock_chunk_index = current_chunk_codeblock_index;

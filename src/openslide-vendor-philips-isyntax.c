@@ -38,23 +38,23 @@ typedef struct philips_isyntax_t {
 // Global cache, shared between all opened files (if enabled). Thread-safe initialization in open().
 philips_isyntax_cache_t* philips_isyntax_global_cache_ptr = NULL;
 
-void draw_horiz_line(uint32_t* tile_pixels, i32 tile_width, i32 y, i32 start, i32 end, uint32_t color) {
+static void draw_horiz_line(uint32_t* tile_pixels, i32 tile_width, i32 y, i32 start, i32 end, uint32_t color) {
     for (int x = start; x < end; ++x) {
         tile_pixels[y*tile_width + x] = color;
     }
 }
 
-void draw_vert_line(uint32_t* tile_pixels, i32 tile_width, i32 x, i32 start, i32 end, uint32_t color) {
+static void draw_vert_line(uint32_t* tile_pixels, i32 tile_width, i32 x, i32 start, i32 end, uint32_t color) {
     for (int y = start; y < end; ++y) {
         tile_pixels[y*tile_width + x] = color;
     }
 }
 
-void draw_text(uint32_t* tile_pixels, i32 tile_width, i32 x_pos, i32 y_pos, uint32_t color, const char* text) {
+static void draw_text(uint32_t* tile_pixels, i32 tile_width, i32 x_pos, i32 y_pos, uint32_t color, const char* text) {
     const int font_size = 8;
-    for (char* ch = text; *ch != 0; ++ch) {
+    for (const char* ch = text; *ch != 0; ++ch) {
         for (int y = 0; y < font_size; ++y) {
-            uint8_t bit_line = font8x8_basic[*ch][y];
+            uint8_t bit_line = font8x8_basic[*((u8*)ch)][y];
             for (int x = 0; x < font_size; ++x) {
                 if (bit_line & (1u << x)) {
                     tile_pixels[(y + y_pos) * tile_width + x + x_pos] = color;
@@ -65,25 +65,23 @@ void draw_text(uint32_t* tile_pixels, i32 tile_width, i32 x_pos, i32 y_pos, uint
     }
 }
 
-void annotate_tile(uint32_t* tile_pixels, i32 scale, i32 tile_col, i32 tile_row, i32 tile_width, i32 tile_height) {
+static void annotate_tile(uint32_t* tile_pixels, i32 scale, i32 tile_col, i32 tile_row, i32 tile_width, i32 tile_height) {
 #define IS_DEBUG_ANNOTATE_TILE false
-#if IS_DEBUG_ANNOTATE_TILE
-    // OpenCV in C is hard... the core_c.h includes types_c.h which includes cvdef.h which is c++.
-    // But we don't need much. Axis-aligned lines, and some simple text.
-    int pad = 1;
-    uint32_t color = 0xff0000ff; // ARGB
-    draw_horiz_line(tile_pixels, tile_width, /*y=*/pad, /*start=*/pad, /*end=*/tile_width-pad, color);
-    draw_horiz_line(tile_pixels, tile_width, /*y=*/tile_height-pad, /*start=*/pad, /*end=*/tile_width-pad, color);
+    if (IS_DEBUG_ANNOTATE_TILE) {
+        // OpenCV in C is hard... the core_c.h includes types_c.h which includes cvdef.h which is c++.
+        // But we don't need much. Axis-aligned lines, and some simple text.
+        int pad = 1;
+        uint32_t color = 0xff0000ff; // ARGB
+        draw_horiz_line(tile_pixels, tile_width, /*y=*/pad, /*start=*/pad, /*end=*/tile_width - pad, color);
+        draw_horiz_line(tile_pixels, tile_width, /*y=*/tile_height - pad, /*start=*/pad, /*end=*/tile_width - pad, color);
 
-    draw_vert_line(tile_pixels, tile_width, /*x=*/pad, /*start=*/pad, /*end=*/tile_height-pad, color);
-    draw_vert_line(tile_pixels, tile_width, /*x=*/tile_width-pad, /*start=*/pad, /*end=*/tile_height-pad, color);
+        draw_vert_line(tile_pixels, tile_width, /*x=*/pad, /*start=*/pad, /*end=*/tile_height - pad, color);
+        draw_vert_line(tile_pixels, tile_width, /*x=*/tile_width - pad, /*start=*/pad, /*end=*/tile_height - pad, color);
 
-    char buf[128];
-    sprintf(buf, "x=%d,y=%d,s=%d", tile_row, tile_col, scale);
-    draw_text(tile_pixels, tile_width, 10, 10, color, buf);
-#else
-    // Intentionally empty, the compiler should optimize the call away.
-#endif
+        char buf[128];
+        sprintf(buf, "x=%d,y=%d,s=%d", tile_row, tile_col, scale);
+        draw_text(tile_pixels, tile_width, 10, 10, color, buf);
+    }
 }
 
 static bool philips_isyntax_detect(
@@ -109,7 +107,7 @@ static bool philips_isyntax_detect(
     g_autofree char *buf = g_malloc(num_chars_to_read);
     size_t num_read = _openslide_fread(f, buf, num_chars_to_read-1);
     buf[num_chars_to_read-1] = 0;
-    LOG_VAR("%d", num_read);
+    LOG_VAR("%ld", num_read);
     LOG_VAR("%s", buf);
 
     // TODO(avirodov): probably a more robust XML parsing is needed.
@@ -190,15 +188,18 @@ static void tile_list_insert_list_first(isyntax_tile_list_t* target_list, isynta
     isyntax_tile_t* _iter = _list.head; _iter; _iter = _iter->cache_next
 
 
-void isyntax_openslide_load_tile_coefficients_ll_or_h(philips_isyntax_cache_t* cache, isyntax_t* isyntax, isyntax_tile_t* tile, int codeblock_index, bool is_ll) {
+static void isyntax_openslide_load_tile_coefficients_ll_or_h(philips_isyntax_cache_t* cache,
+                                                             isyntax_t* isyntax, isyntax_tile_t* tile,
+                                                             int codeblock_index, bool is_ll) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     isyntax_data_chunk_t* chunk = &wsi->data_chunks[tile->data_chunk_index];
 
     for (int color = 0; color < 3; ++color) {
         isyntax_codeblock_t* codeblock = &wsi->codeblocks[codeblock_index + color * chunk->codeblock_count_per_color];
         ASSERT(codeblock->coefficient == (is_ll ? 0 : 1)); // LL coefficient codeblock for this tile.
-        ASSERT(codeblock->color_component == color);
-        ASSERT(codeblock->scale == tile->dbg_tile_scale);
+        // TODO(avirodov): int vs i32 vs u32 consistently.
+        ASSERT(codeblock->color_component == (u32)color);
+        ASSERT(codeblock->scale == (u32)tile->dbg_tile_scale);
         if (is_ll) {
             tile->color_channels[color].coeff_ll = (icoeff_t *) block_alloc(&cache->ll_coeff_block_allocator);
         } else {
@@ -209,7 +210,8 @@ void isyntax_openslide_load_tile_coefficients_ll_or_h(philips_isyntax_cache_t* c
         size_t bytes_read = file_handle_read_at_offset(codeblock_data, isyntax->file_handle,
                                                        codeblock->block_data_offset, codeblock->block_size);
         if (!(bytes_read > 0)) {
-            console_print_error("Error: could not read iSyntax data at offset %lld (read size %lld)\n", offset0, read_size);
+            console_print_error("Error: could not read iSyntax data at offset %lld (read size %lld)\n",
+                                codeblock->block_data_offset, codeblock->block_size);
         }
 
         isyntax_hulsken_decompress(codeblock_data, codeblock->block_size,
@@ -226,7 +228,8 @@ void isyntax_openslide_load_tile_coefficients_ll_or_h(philips_isyntax_cache_t* c
     }
 }
 
-void isyntax_openslide_load_tile_coefficients(philips_isyntax_cache_t* cache, isyntax_t* isyntax, isyntax_tile_t* tile) {
+static void isyntax_openslide_load_tile_coefficients(philips_isyntax_cache_t* cache, isyntax_t* isyntax,
+                                                     isyntax_tile_t* tile) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
 
     if (!tile->exists) {
@@ -270,7 +273,7 @@ typedef union isyntax_tile_children_t {
     isyntax_tile_t* as_array[4];
 } isyntax_tile_children_t;
 
-isyntax_tile_children_t isyntax_openslide_compute_children(isyntax_t* isyntax, isyntax_tile_t* tile) {
+static isyntax_tile_children_t isyntax_openslide_compute_children(isyntax_t* isyntax, isyntax_tile_t* tile) {
     isyntax_tile_children_t result;
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     ASSERT(tile->dbg_tile_scale > 0);
@@ -283,7 +286,8 @@ isyntax_tile_children_t isyntax_openslide_compute_children(isyntax_t* isyntax, i
 }
 
 
-uint32_t* isyntax_openslide_idwt(philips_isyntax_cache_t* cache, isyntax_t* isyntax, isyntax_tile_t* tile, bool return_rgb) {
+static uint32_t* isyntax_openslide_idwt(philips_isyntax_cache_t* cache, isyntax_t* isyntax,
+                                        isyntax_tile_t* tile, bool return_rgb) {
     if (tile->dbg_tile_scale == 0) {
         ASSERT(return_rgb); // Shouldn't be asking for idwt at level 0 if we're not going to use the result for pixels.
         return isyntax_load_tile(isyntax, &isyntax->images[isyntax->wsi_image_index],
@@ -313,8 +317,8 @@ uint32_t* isyntax_openslide_idwt(philips_isyntax_cache_t* cache, isyntax_t* isyn
     return NULL;
 }
 
-void isyntax_make_tile_lists_add_parent_to_list(isyntax_t* isyntax, isyntax_tile_t* tile,
-                                                isyntax_tile_list_t* idwt_list, isyntax_tile_list_t* cache_list) {
+static void isyntax_make_tile_lists_add_parent_to_list(isyntax_t* isyntax, isyntax_tile_t* tile,
+                                                       isyntax_tile_list_t* idwt_list, isyntax_tile_list_t* cache_list) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     int parent_tile_scale = tile->dbg_tile_scale + 1;
     if (parent_tile_scale > wsi->max_scale) {
@@ -332,9 +336,8 @@ void isyntax_make_tile_lists_add_parent_to_list(isyntax_t* isyntax, isyntax_tile
     }
 }
 
-void isyntax_make_tile_lists_add_children_to_list(isyntax_t* isyntax, isyntax_tile_t* tile,
-                                                  isyntax_tile_list_t* children_list, isyntax_tile_list_t* cache_list) {
-    isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
+static void isyntax_make_tile_lists_add_children_to_list(isyntax_t* isyntax, isyntax_tile_t* tile,
+                                                         isyntax_tile_list_t* children_list, isyntax_tile_list_t* cache_list) {
     if (tile->dbg_tile_scale > 0) {
         isyntax_tile_children_t children = isyntax_openslide_compute_children(isyntax, tile);
         for (int i = 0; i < 4; ++i) {
@@ -346,11 +349,11 @@ void isyntax_make_tile_lists_add_children_to_list(isyntax_t* isyntax, isyntax_ti
     }
 }
 
-void isyntax_make_tile_lists_by_scale(isyntax_t* isyntax, int start_scale,
-                                      isyntax_tile_list_t* idwt_list,
-                                      isyntax_tile_list_t* coeff_list,
-                                      isyntax_tile_list_t* children_list,
-                                      isyntax_tile_list_t* cache_list) {
+static void isyntax_make_tile_lists_by_scale(isyntax_t* isyntax, int start_scale,
+                                             isyntax_tile_list_t* idwt_list,
+                                             isyntax_tile_list_t* coeff_list,
+                                             isyntax_tile_list_t* children_list,
+                                             isyntax_tile_list_t* cache_list) {
     isyntax_image_t* wsi = &isyntax->images[isyntax->wsi_image_index];
     for (int scale = start_scale; scale <= wsi->max_scale; ++scale) {
         // Mark all neighbors of idwt tiles at this level as requiring coefficients.
@@ -500,12 +503,11 @@ static bool philips_isyntax_read_tile(
         struct _openslide_level *osr_level,
         int64_t tile_col, int64_t tile_row,
         void *arg G_GNUC_UNUSED,
-        GError **err) {
+        GError **err G_GNUC_UNUSED) {
     philips_isyntax_t *data = osr->data;
     isyntax_t* isyntax = data->isyntax;
 
     philips_isyntax_level* pi_level = (philips_isyntax_level*)osr_level;
-    isyntax_image_t* wsi_image = &isyntax->images[isyntax->wsi_image_index];
 
     // LOG("level=%d tile_col=%ld tile_row=%ld", pi_level->level_idx, tile_col, tile_row);
     // tile size
@@ -567,15 +569,17 @@ static bool philips_isyntax_open(
         struct _openslide_hash *quickhash1 G_GNUC_UNUSED,
         GError **err) {
     // Do not allow multithreading in opening.
-    static GStaticMutex static_open_mutex = G_STATIC_MUTEX_INIT;
-    g_static_mutex_lock(&static_open_mutex);
+    // https://docs.gtk.org/glib/method.Mutex.init.html:
+    //   "It is not necessary to initialize a mutex that has been statically allocated."
+    static GMutex static_open_mutex;
+    g_mutex_lock(&static_open_mutex);
     static bool threadmemory_initialized = false;
     if (!threadmemory_initialized) {
         get_system_info(/*verbose=*/true);
         init_thread_memory(0);
         threadmemory_initialized = true;
     }
-    g_static_mutex_unlock(&static_open_mutex);
+    g_mutex_unlock(&static_open_mutex);
     LOG("Opening file %s", filename);
 
     philips_isyntax_t* data = malloc(sizeof(philips_isyntax_t));
@@ -585,7 +589,7 @@ static bool philips_isyntax_open(
     osr->data = data;
     bool open_result = isyntax_open(data->isyntax, filename);
     LOG_VAR("%d", (int)open_result);
-    LOG_VAR("%d", data->image_count);
+    LOG_VAR("%d", data->isyntax->image_count);
     if (!open_result) {
         free(data->isyntax);
         free(data);
@@ -606,7 +610,7 @@ static bool philips_isyntax_open(
     }
     printf("philips_isyntax_open is_global_cache=%d cache_size=%d\n", (int)is_global_cache, cache_size);
     if (is_global_cache) {
-        g_static_mutex_lock(&static_open_mutex);
+        g_mutex_lock(&static_open_mutex);
         if (philips_isyntax_global_cache_ptr == NULL) {
             // Note: this requires that all opened files have the same block size. If that is not true, we
             // will need to have allocator per size. Alternatively, implement allocator freeing after
@@ -616,7 +620,7 @@ static bool philips_isyntax_open(
                                                                           data->isyntax->block_height);
         }
         data->cache = philips_isyntax_global_cache_ptr;
-        g_static_mutex_unlock(&static_open_mutex);
+        g_mutex_unlock(&static_open_mutex);
     } else {
         data->cache = philips_isyntax_make_cache("cache_list", cache_size,
                                                  data->isyntax->block_width, data->isyntax->block_height);
@@ -624,10 +628,10 @@ static bool philips_isyntax_open(
     ASSERT(data->isyntax->block_width == data->cache->allocator_block_width);
     ASSERT(data->isyntax->block_height == data->cache->allocator_block_height);
 
-    LOG_VAR("%d", data->is_mpp_known);
+    LOG_VAR("%d", data->isyntax->is_mpp_known);
     if (data->isyntax->is_mpp_known) {
-        LOG_VAR("%f", data->mpp_x);
-        LOG_VAR("%f", data->mpp_y);
+        LOG_VAR("%f", data->isyntax->mpp_x);
+        LOG_VAR("%f", data->isyntax->mpp_y);
         add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_X, data->isyntax->mpp_x);
         add_float_property(osr, OPENSLIDE_PROPERTY_NAME_MPP_Y, data->isyntax->mpp_x);
         const float float_equals_tolerance = 1e-5;

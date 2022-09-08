@@ -331,26 +331,11 @@ static inline void semaphore_wait(semaphore_handle_t semaphore) {
 //static inline u8* platform_alloc(size_t size) { return (u8*)malloc(size);}
 //#endif
 #define get_clock() 0
-#define get_seconds_elapsed(start, end) 0
+#define get_seconds_elapsed(start, end) (end - start)
 
 mem_t* platform_allocate_mem_buffer(size_t capacity);
 mem_t* platform_read_entire_file(const char* filename);
 u64 file_read_at_offset(void* dest, file_stream_t fp, u64 offset, u64 num_bytes);
-
-void mouse_show();
-void mouse_hide();
-void update_cursor();
-void set_cursor_default();
-void set_cursor_crosshair();
-
-const char* get_default_save_directory();
-void open_file_dialog(app_state_t* app_state, u32 filetype_hint);
-bool save_file_dialog(app_state_t* app_state, char* path_buffer, i32 path_buffer_size, const char* filter_string, const char* filename_hint);
-void toggle_fullscreen(window_handle_t window);
-bool check_fullscreen(window_handle_t window);
-void set_window_title(window_handle_t window, const char* title);
-void reset_window_title(window_handle_t window);
-void message_box(app_state_t* app_state, const char* message);
 
 int platform_stat(const char* filename, struct stat* st);
 file_stream_t file_stream_open_for_reading(const char* filename);
@@ -365,6 +350,7 @@ file_handle_t open_file_handle_for_simultaneous_access(const char* filename);
 void file_handle_close(file_handle_t file_handle);
 size_t file_handle_read_at_offset(void* dest, file_handle_t file_handle, u64 offset, size_t bytes_to_read);
 
+#if 0
 i32 get_work_queue_task_count(work_queue_t* queue);
 bool add_work_queue_entry(work_queue_t* queue, work_queue_callback_t callback, void* userdata, size_t userdata_size);
 bool is_queue_work_in_progress(work_queue_t* queue);
@@ -377,6 +363,7 @@ void test_multithreading_work_queue();
 
 bool file_exists(const char* filename);
 bool is_directory(const char* path);
+#endif
 
 void get_system_info(bool verbose);
 
@@ -385,9 +372,11 @@ void benaphore_destroy(benaphore_t* benaphore);
 void benaphore_lock(benaphore_t* benaphore);
 void benaphore_unlock(benaphore_t* benaphore);
 
+#if 0
 void async_read_submit(io_operation_t* op);
 bool async_read_has_finished(io_operation_t* op);
 i64 async_read_finalize(io_operation_t* op);
+#endif
 
 block_allocator_t block_allocator_create(size_t block_size, size_t max_capacity_in_blocks, size_t chunk_size);
 void block_allocator_destroy(block_allocator_t* allocator);
@@ -409,19 +398,12 @@ unsigned int crc32_skip_carriage_return(unsigned char* buffer, int len);
 //void console_print_verbose(const char* fmt, ...); // defined in console.cpp
 //void console_print_error(const char* fmt, ...); // // defined in console.cpp
 //#endif
-#if IS_DEBUG
-#define console_print(msg, ...) printf("%s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
-#define console_print_error(msg, ...) printf("ERROR %s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
-#else
-#define console_print(msg, ...)
-#define console_print_error(msg, ...)
-#endif
 
-#if IS_DEBUG_VERBOSE
-#define console_print_verbose(msg, ...) printf("VERBOSE %s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
-#else
-#define console_print_verbose(msg, ...)
-#endif
+#define IS_DEBUG 0
+#define IS_VERBOSE 0
+#define console_print(msg, ...) if (IS_DEBUG) { printf("%s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); }
+#define console_print_verbose(msg, ...) if (IS_VERBOSE) { printf("%s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); }
+#define console_print_error(msg, ...) printf("%s:%d: " msg "\n", __FUNCTION__, __LINE__, ##__VA_ARGS__);
 
 
 // globals
@@ -436,7 +418,7 @@ unsigned int crc32_skip_carriage_return(unsigned char* buffer, int len);
 // TODO(avirodov): I disabled thread-local memory allocation here, need to either re-enable it if we want to support
 //  thread-specific pools, and initialize it properly on new threads, or have a more proper solution.
 extern /*THREAD_LOCAL*/ thread_memory_t* local_thread_memory;
-static inline temp_memory_t begin_temp_memory_on_local_thread() { return begin_temp_memory(&local_thread_memory->temp_arena); }
+static inline temp_memory_t begin_temp_memory_on_local_thread(void) { return begin_temp_memory(&local_thread_memory->temp_arena); }
 
 extern int g_argc;
 extern const char** g_argv;

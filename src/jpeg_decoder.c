@@ -7,6 +7,11 @@
 #endif
 #include "jpeglib.h"
 
+// TODO(avirodov): use it as library instead of as source?
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 static void on_error(j_common_ptr cinfo) {
 	(*cinfo->err->output_message)(cinfo);
 }

@@ -219,7 +219,8 @@ static void yxml_popstack(yxml_t *x) {
 	while(x->stack[x->stacklen]);
 }
 
-
+// TODO(avirodov): use it as library instead of as source?
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 static inline yxml_ret_t yxml_elemstart  (yxml_t *x, unsigned ch) { return yxml_pushstack(x, &x->elem, ch); }
 static inline yxml_ret_t yxml_elemname   (yxml_t *x, unsigned ch) { return yxml_pushstackc(x, ch); }
 static inline yxml_ret_t yxml_elemnameend(yxml_t *x, unsigned ch) { return YXML_ELEMSTART; }

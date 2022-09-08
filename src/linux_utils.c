@@ -39,7 +39,7 @@ i64 file_stream_read(void* dest, size_t bytes_to_read, file_stream_t file_stream
 }
 
 void file_stream_write(void* source, size_t bytes_to_write, file_stream_t file_stream) {
-	size_t ret = fwrite(source, 1, bytes_to_write, file_stream);
+	/*size_t ret =*/ fwrite(source, 1, bytes_to_write, file_stream);
 }
 
 i64 file_stream_get_filesize(file_stream_t file_stream) {
@@ -66,8 +66,7 @@ i64 file_stream_get_pos(file_stream_t file_stream) {
 }
 
 bool file_stream_set_pos(file_stream_t file_stream, i64 offset) {
-	fpos_t pos = {offset};
-	int ret = fsetpos64(file_stream, &pos);
+    int ret = fseek(file_stream, offset, SEEK_SET);
 	return (ret == 0);
 }
 
