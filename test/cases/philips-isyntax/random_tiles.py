@@ -22,7 +22,7 @@ if __name__ == "__main__":
     random_offset = (0, 0)
 
     for _ in range(iterations):
-        for slide in slides:
+        for slide_idx, slide in enumerate(slides):
             for i in range(samples):
                 level = np.random.choice(levels)
                 level_dimensions = slide.level_dimensions[level]
@@ -30,5 +30,5 @@ if __name__ == "__main__":
                 num_tiles_y = level_dimensions[1] // tile_size
                 tile_location_x = np.random.choice(num_tiles_x) * tile_size + random_offset[0]
                 tile_location_y = np.random.choice(num_tiles_y) * tile_size + random_offset[1]
-                print(f'{i=} reading {level=} {tile_location_x=} {tile_location_y=}')
+                print(f'{i=} reading {level=} {tile_location_x=} {tile_location_y=} slide={slide_paths[slide_idx]}')
                 image = slide.read_region((tile_location_x, tile_location_y), level, (tile_size, tile_size))

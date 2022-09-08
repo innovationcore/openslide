@@ -269,6 +269,11 @@ void block_allocator_destroy(block_allocator_t* allocator) {
 }
 
 void* block_alloc(block_allocator_t* allocator) {
+	// TODO(avirodov): Restore the allocator. It is a good idea, but seems to OOM in 
+	//  ML usecase even though memory is available (even for cache size 2000, may 
+	//  be due to fragmentation).
+	return malloc(allocator->block_size);
+
 	void* result = NULL;
 	benaphore_lock(&allocator->lock);
 	if (allocator->free_list != NULL) {
@@ -306,6 +311,9 @@ void* block_alloc(block_allocator_t* allocator) {
 }
 
 void block_free(block_allocator_t* allocator, void* ptr_to_free) {
+	free(ptr_to_free);
+	return;
+
 	benaphore_lock(&allocator->lock);
 	block_allocator_item_t free_item = {0};
 	// Find the right chunk
