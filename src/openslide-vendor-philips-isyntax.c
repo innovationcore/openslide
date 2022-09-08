@@ -608,7 +608,16 @@ static bool philips_isyntax_open(
     if (str_cache_size) {
         cache_size = atoi(str_cache_size);
     }
-    printf("philips_isyntax_open is_global_cache=%d cache_size=%d\n", (int)is_global_cache, cache_size);
+    {
+        u64 memory_count = 0;
+        isyntax_image_t* wsi = &data->isyntax->images[data->isyntax->wsi_image_index];
+        for (int level_idx = 0; level_idx < wsi->level_count; ++level_idx) {
+            memory_count += wsi->levels[level_idx].tile_count * sizeof(isyntax_tile_t);
+        }
+        memory_count += wsi->codeblock_count * sizeof(isyntax_codeblock_t);
+        memory_count += wsi->data_chunk_count * sizeof(isyntax_data_chunk_t);
+        printf("philips_isyntax_open is_global_cache=%d cache_size=%d sizeof_structs=%'lld\n", (int)is_global_cache, cache_size, memory_count);
+    }
     if (is_global_cache) {
         g_mutex_lock(&static_open_mutex);
         if (philips_isyntax_global_cache_ptr == NULL) {

@@ -282,24 +282,30 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 					if (last_char == '/') {
 						value_len--; // The last character may cause the base64 decoding to fail if invalid
 					}
-					u8* decoded = base64_decode((u8*)value, value_len, &decoded_len);
-					if (decoded) {
-						i32 channels_in_file = 0;
-#if 1
-						// TODO: Why does this crash?
-						// Apparently, there is a bug in the libjpeg-turbo implementation of jsimd_can_h2v2_fancy_upsample() when using SIMD.
-						// jsimd_h2v2_fancy_upsample_avx2 writes memory out of bounds.
-						// This causes the program to crash eventually when trying to free memory in free_pool().
-						// When using a hardware watchpoint on the corrupted memory, the overwiting occurs in x86_64/jdsample-avx2.asm at line 358:
-						//     vmovdqu     YMMWORD [rdi+3*SIZEOF_YMMWORD], ymm6
-						// WORKAROUND: disabled SIMD in jsimd_can_h2v2_fancy_upsample().
 
-						image->pixels = jpeg_decode_image(decoded, decoded_len, &image->width, &image->height, &channels_in_file);
+                    // TODO(avirodov): decode only if requested. Currently this is just memory waste for ML usecase.
+                    const bool decode_other_images_on_load = false;
+                    if (decode_other_images_on_load) {
+                        u8* decoded = base64_decode((u8*)value, value_len, &decoded_len);
+                        if (decoded) {
+                            i32 channels_in_file = 0;
+#if 1
+                            // TODO: Why does this crash?
+                            // Apparently, there is a bug in the libjpeg-turbo implementation of jsimd_can_h2v2_fancy_upsample() when using SIMD.
+                            // jsimd_h2v2_fancy_upsample_avx2 writes memory out of bounds.
+                            // This causes the program to crash eventually when trying to free memory in free_pool().
+                            // When using a hardware watchpoint on the corrupted memory, the overwiting occurs in x86_64/jdsample-avx2.asm at line 358:
+                            //     vmovdqu     YMMWORD [rdi+3*SIZEOF_YMMWORD], ymm6
+                            // WORKAROUND: disabled SIMD in jsimd_can_h2v2_fancy_upsample().
+
+                            image->pixels = jpeg_decode_image(decoded, decoded_len, &image->width, &image->height,
+                                                              &channels_in_file);
 #else
-						// stb_image.h
-						image->pixels = stbi_load_from_memory(decoded, decoded_len, &image->width, &image->height, &channels_in_file, 4);
+                            // stb_image.h
+                            image->pixels = stbi_load_from_memory(decoded, decoded_len, &image->width, &image->height, &channels_in_file, 4);
 #endif
-						free(decoded);
+                            free(decoded);
+                        }
 					}
 				} break;
 				case 0x1013: /*DP_COLOR_MANAGEMENT*/                        {} break;
@@ -450,6 +456,7 @@ static bool isyntax_parse_scannedimage_child_node(isyntax_t* isyntax, u32 group,
 						}
 
 						free(decoded);
+                        image->block_header_table = NULL;
 					} else {
 						//TODO: handle error condition properly
 						success = false;
@@ -1504,7 +1511,6 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
 	isyntax_level_t* level = wsi->levels + scale;
 	ASSERT(tile_x >= 0 && tile_x < level->width_in_tiles);
 	ASSERT(tile_y >= 0 && tile_y < level->height_in_tiles);
-	isyntax_tile_t* tile = level->tiles + tile_y * level->width_in_tiles + tile_x;
 	i32 block_width = isyntax->block_width;
 	i32 block_height = isyntax->block_height;
 	i32 first_valid_pixel = ISYNTAX_IDWT_FIRST_VALID_PIXEL;
@@ -1625,25 +1631,14 @@ u32* isyntax_load_tile(isyntax_t* isyntax, isyntax_image_t* wsi, i32 scale, i32 
             child_bottom_left->has_ll = true;
             child_bottom_right->has_ll = true;
 
-            // Even if the parent tile has invalid edges around the outside, its child LL blocks will still have valid edges on the inside.
-            child_top_left->ll_invalid_edges = invalid_edges & ~(ISYNTAX_ADJ_TILE_CENTER_RIGHT | ISYNTAX_ADJ_TILE_BOTTOM_RIGHT | ISYNTAX_ADJ_TILE_BOTTOM_CENTER);
-            child_top_right->ll_invalid_edges = invalid_edges & ~(ISYNTAX_ADJ_TILE_CENTER_LEFT | ISYNTAX_ADJ_TILE_BOTTOM_LEFT | ISYNTAX_ADJ_TILE_BOTTOM_CENTER);
-            child_bottom_left->ll_invalid_edges = invalid_edges & ~(ISYNTAX_ADJ_TILE_CENTER_RIGHT | ISYNTAX_ADJ_TILE_TOP_RIGHT | ISYNTAX_ADJ_TILE_TOP_CENTER);
-            child_bottom_right->ll_invalid_edges = invalid_edges & ~(ISYNTAX_ADJ_TILE_CENTER_LEFT | ISYNTAX_ADJ_TILE_TOP_LEFT | ISYNTAX_ADJ_TILE_TOP_CENTER);
-
             if (invalid_edges != 0) {
-                console_print("load: scale=%d x=%d y=%d  idwt time =%g  invalid edges=%x\n", scale, tile_x, tile_y, elapsed_idwt, invalid_edges);
+                console_print_error("load: scale=%d x=%d y=%d  idwt time =%g  invalid edges=%x\n", scale, tile_x, tile_y, elapsed_idwt, invalid_edges);
                 // early out
-                tile->is_submitted_for_loading = false;
                 release_temp_memory(&temp_memory);
                 return NULL;
             }
         }
     }
-
-	tile->is_loaded = true; // Meaning: it is now safe to start loading 'child' tiles of the next level
-    tile->is_submitted_for_loading = false;
-    tile->force_reload = false;
 
     if (!decode_rgb) {
         release_temp_memory(&temp_memory); // free Y, Co and Cg
@@ -2693,12 +2688,6 @@ void isyntax_destroy(isyntax_t* isyntax) {
 				image->codeblocks = NULL;
 			}
 			if (image->data_chunks) {
-				for (i32 i = 0; i < image->data_chunk_count; ++i) {
-					isyntax_data_chunk_t* chunk = image->data_chunks + i;
-					if (chunk->data) {
-						free(chunk->data);
-					}
-				}
 				free(image->data_chunks);
 				image->data_chunks = NULL;
 			}

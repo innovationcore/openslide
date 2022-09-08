@@ -189,13 +189,11 @@ typedef struct isyntax_data_chunk_t {
 	i32 codeblock_count_per_color;
 	i32 scale;
 	i32 level_count;
-	u8* data;
 } isyntax_data_chunk_t;
 
 typedef struct isyntax_tile_channel_t {
 	icoeff_t* coeff_h;
 	icoeff_t* coeff_ll;
-	u32 neighbors_loaded;
 } isyntax_tile_channel_t;
 
 typedef struct isyntax_tile_t {
@@ -203,15 +201,9 @@ typedef struct isyntax_tile_t {
 	u32 codeblock_chunk_index;
 	u32 data_chunk_index;
 	isyntax_tile_channel_t color_channels[3];
-	u32 ll_invalid_edges;
 	bool exists;
 	bool has_ll;
 	bool has_h;
-	bool is_submitted_for_h_coeff_decompression;
-	bool is_submitted_for_loading;
-	bool is_loaded;
-    bool force_reload;
-
     bool cache_marked;
     struct isyntax_tile_t* cache_next;
     struct isyntax_tile_t* cache_prev;
@@ -327,6 +319,7 @@ typedef struct isyntax_t {
 	i32 block_height;
 	i32 tile_width;
 	i32 tile_height;
+    // TODO(avirodov): move to allocators/cache. Currently uninitialized and not crashing???
 	icoeff_t* black_dummy_coeff;
 	icoeff_t* white_dummy_coeff;
 	// block_allocator_t ll_coeff_block_allocator;
