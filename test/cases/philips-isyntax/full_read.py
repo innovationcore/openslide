@@ -19,8 +19,8 @@ if __name__ == "__main__":
     np.random.seed(1)
     random_offset = (0, 0)
 
-    for _ in range(iterations):
-        for slide in slides:
+    for iteration in range(iterations):
+        for slide_idx, slide in enumerate(slides):
             level_dimensions = slide.level_dimensions[level]
             num_tiles_x = level_dimensions[0] // tile_size
             num_tiles_y = level_dimensions[1] // tile_size
@@ -29,7 +29,7 @@ if __name__ == "__main__":
             print(f'{num_tiles_x=} {num_tiles_y=}')
             sum_pixels = 0
             for j in range(num_tiles_y):
-                print(f'reading row {level=} {j=} (out of {num_tiles_y=})')
+                print(f'{iteration=} {slide_idx=} reading row {level=} {j=} (out of {num_tiles_y=})')
                 for i in range(num_tiles_x):
                     image = slide.read_region((i * tile_size, j * tile_size), level, (tile_size, tile_size))
                     sum_pixels += np.sum(np.array(image))

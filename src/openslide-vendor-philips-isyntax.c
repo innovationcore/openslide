@@ -617,7 +617,7 @@ static bool philips_isyntax_open(
 
     // Initialize the cache (global, if requested).
     bool is_global_cache = true;
-    int cache_size = 20000;
+    int cache_size = 2000;
     const char* str_is_global_cache = g_environ_getenv(g_get_environ(), "OPENSLIDE_ISYNTAX_GLOBAL_CACHE");
     const char* str_cache_size = g_environ_getenv(g_get_environ(), "OPENSLIDE_ISYNTAX_CACHE_SIZE");
     if (str_is_global_cache && *str_is_global_cache == '0') {
