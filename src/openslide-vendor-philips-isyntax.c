@@ -22,6 +22,7 @@
 #include <tiffio.h>
 #include "isyntax.h"
 #include "font8x8_basic.h" // From https://github.com/dhepper/font8x8/blob/8e279d2d864e79128e96188a6b9526cfa3fbfef9/font8x8_basic.h
+#include <time.h>
 
 // This header "poisons" some functions, so must be included after system headers that use the poisoned functions (eg fclose in wchar.h).
 #include "openslide-private.h"
@@ -30,6 +31,36 @@
 #define LOG_VAR(fmt, var) console_print("%s: %s=" fmt "\n", __FUNCTION__, #var, var)
 
 static const struct _openslide_ops philips_isyntax_ops;
+
+static int timing_print_trigger = 0; // Bump to get prints, one per block.
+static int tile_call_counter = 0;
+typedef struct timing_block_t {
+    uint64_t micros_start;
+    uint64_t micros_total;
+    int print_trigger_processed;
+    const char* block_name;
+} timing_block_t;
+
+// https://stackoverflow.com/questions/5833094/get-a-timestamp-in-c-in-microseconds
+#define SEC_TO_US(sec) ((sec)*1000000)
+#define NS_TO_US(ns)    ((ns)/1000)
+static uint64_t micros(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    uint64_t us = SEC_TO_US((uint64_t)ts.tv_sec) + NS_TO_US((uint64_t)ts.tv_nsec);
+    return us;
+}
+
+#define START_TIMING(_name) \
+    static timing_block_t _timing_block_##_name = {0, 0, 0, #_name}; \
+    _timing_block_##_name.micros_start = micros();
+
+#define END_TIMING(_name) \
+    _timing_block_##_name.micros_total += micros() - _timing_block_##_name.micros_start; \
+    if (timing_print_trigger > _timing_block_##_name.print_trigger_processed) {          \
+        printf("### perf %s micros_total=%ld\n", _timing_block_##_name.block_name, _timing_block_##_name.micros_total);   \
+        _timing_block_##_name.print_trigger_processed = timing_print_trigger;            \
+    }
 
 typedef struct philips_isyntax_level {
     struct _openslide_level base;
@@ -424,6 +455,7 @@ static void isyntax_make_tile_lists_by_scale(isyntax_t* isyntax, int start_scale
 }
 
 static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isyntax_t* isyntax, int scale, int tile_x, int tile_y) {
+    START_TIMING(isyntax_openslide_load_tile);
     // TODO(avirodov): more granular locking (some notes below). This will require handling overlapping work, that is
     //  thread A needing tile 123 and started to load it, and thread B needing same tile 123 and needs to wait for A.
     g_autoptr(GMutexLocker) locker G_GNUC_UNUSED = g_mutex_locker_new(&cache->mutex);
@@ -432,9 +464,10 @@ static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isy
     isyntax_level_t* level = &wsi->levels[scale];
     isyntax_tile_t *tile = &level->tiles[level->width_in_tiles * tile_y + tile_x];
     // printf("=== isyntax_openslide_load_tile scale=%d tile_x=%d tile_y=%d\n", scale, tile_x, tile_y);
-    if (!tile->exists) {
+    if (!tile->exists || true) {
         uint32_t* rgba = malloc(isyntax->tile_width * isyntax->tile_height * 4);
         memset(rgba, 0xff, isyntax->tile_width * isyntax->tile_height * 4);
+        END_TIMING(isyntax_openslide_load_tile);
         return rgba;
     }
 
@@ -512,6 +545,7 @@ static uint32_t* isyntax_openslide_load_tile(philips_isyntax_cache_t* cache, isy
         tile->has_h = false;
     }
 
+    END_TIMING(isyntax_openslide_load_tile);
     return result;
 }
 
@@ -522,6 +556,10 @@ static bool philips_isyntax_read_tile(
         int64_t tile_col, int64_t tile_row,
         void *arg G_GNUC_UNUSED,
         GError **err G_GNUC_UNUSED) {
+    tile_call_counter++;
+    // if (tile_call_counter % 1000 == 0) { timing_print_trigger++; }
+    START_TIMING(philips_isyntax_read_tile);
+
     philips_isyntax_t *data = osr->data;
     isyntax_t* isyntax = data->isyntax;
 
@@ -546,14 +584,19 @@ static bool philips_isyntax_read_tile(
                              &cache_entry);
     }
 
+    START_TIMING(philips_isyntax_drawing);
     // draw it
+    // printf("tiledata=%p tw*4=%ld stride=%d\n", tiledata, tw*4, cairo_format_stride_for_width (CAIRO_FORMAT_ARGB32, tw));
     g_autoptr(cairo_surface_t) surface =
             cairo_image_surface_create_for_data((unsigned char *) tiledata,
                                                 CAIRO_FORMAT_ARGB32,
                                                 tw, th, tw * 4);
     cairo_set_source_surface(cr, surface, 0, 0);
+    START_TIMING(philips_isyntax_cairo_paint);
     cairo_paint(cr);
-
+    END_TIMING(philips_isyntax_cairo_paint);
+    END_TIMING(philips_isyntax_drawing);
+    END_TIMING(philips_isyntax_read_tile);
     return true;
 }
 
