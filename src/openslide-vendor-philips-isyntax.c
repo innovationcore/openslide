@@ -552,8 +552,17 @@ static bool philips_isyntax_read_tile(
                                                 CAIRO_FORMAT_ARGB32,
                                                 tw, th, tw * 4);
     cairo_set_source_surface(cr, surface, 0, 0);
+    // https://lists.cairographics.org/archives/cairo/2012-June/023206.html
+    // Those are the operators that are observed to work:
+    //    w CAIRO_OPERATOR_SATURATE (current_cairo_operator, aka default OpenSlide)
+    //    w CAIRO_OPERATOR_OVER ("This operator is cairo's default operator."),
+    //    w CAIRO_OPERATOR_DEST_OVER,
+    // SATURATE takes ~12sec to read a dummy slide (forcing all tiles to not exist), OVER & DEST_OVER take 3.5 sec
+    // for same setup. Selecting OVER as the Cairo's default operator, the three outputs are identical.
+    cairo_operator_t current_cairo_operator = cairo_get_operator(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
     cairo_paint(cr);
-
+    cairo_set_operator(cr, current_cairo_operator);
     return true;
 }
 
