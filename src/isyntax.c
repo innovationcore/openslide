@@ -135,12 +135,12 @@ static unsigned char * base64_decode(const unsigned char *src, size_t len,
 static const char* atoi_and_advance(const char* str, i32* dest) {
 	i32 num = 0;
 	bool neg = false;
-	while (isspace(*str)) ++str;
+	while (isspace((int)*str)) ++str;
 	if (*str == '-') {
 		neg = true;
 		++str;
 	}
-	while (isdigit(*str)) {
+	while (isdigit((int)*str)) {
 		num = 10*num + (*str - '0');
 		++str;
 	}
