@@ -25,6 +25,7 @@
 //
 //#include "keycode.h"
 //#include "keytable.h"
+#include <stddef.h>
 
 
 #if WINDOWS
