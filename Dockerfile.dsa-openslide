@@ -1,0 +1,48 @@
+# docker build -t dsa_openslide_isyntax -f Dockerfile.dsa-openslide .
+# docker run -it --rm dsa_openslide_isyntax bash
+
+# To use in DSA:
+# 1. Clone https://github.com/DigitalSlideArchive/digital_slide_archive
+# 2. Edit digital_slide_archive\devops\dsa\docker-compose.yml
+# 3. In docker-compose.yml, replace 'dsarchive/dsa_common' with 'dsa_openslide_isyntax' (no quotes) or other tag name
+#     as specified in 'docker build' invocation.
+
+FROM dsarchive/dsa_common
+
+# Build dependencies (some of these may not be necessary for build, but are useful for development/troubleshooting).
+RUN DEBIAN_FRONTEND="noninteractive" apt-get update && apt-get -y install tzdata
+RUN apt-get install -y \
+      build-essential \
+      gcc \
+      g++ \
+      gdb \
+      clang \
+      make \
+      ninja-build \
+      cmake \
+      autoconf \
+      automake \
+      locales-all \
+      dos2unix \
+      rsync \
+      tar \
+      python \
+	  vim \
+	  git \
+	  pkg-config libtool locales python3-pip valgrind imagemagick \
+	  zlib1g-dev libjpeg-dev libopenjp2-7-dev libtiff-dev libglib2.0-dev libcairo-dev libgdk-pixbuf2.0-dev \
+	  libxml2-dev libsqlite3-dev libsdl2-dev \
+  && apt-get clean
+
+RUN mkdir -p /opt/openslide
+WORKDIR /opt/openslide
+COPY .git /opt/openslide/.git
+RUN git checkout isyntax-support
+RUN git reset --hard HEAD
+
+RUN autoreconf -i .
+RUN ./configure
+RUN make
+# TODO(avirodov): something better than this .so overwrite? This invalidates the build stamps.
+RUN cp /opt/openslide/src/.libs/libopenslide.so.0.4.1 /opt/venv/lib/python3.9/site-packages/pyvips.libs/libopenslide-c47689b0.so.0.4.1
+RUN cp /opt/openslide/src/.libs/libopenslide.so.0.4.1 /opt/venv/lib/python3.9/site-packages/openslide_python.libs/libopenslide-c47689b0.so.0.4.1
