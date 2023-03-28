@@ -9,7 +9,6 @@ pkgconfig_DATA = openslide.pc
 
 ACLOCAL_AMFLAGS=-I m4
 
-
 lib_LTLIBRARIES = src/libopenslide.la
 
 src_libopenslide_la_LIBADD = $(GLIB2_LIBS) $(CAIRO_LIBS) $(SQLITE3_LIBS) \
@@ -17,6 +16,11 @@ src_libopenslide_la_LIBADD = $(GLIB2_LIBS) $(CAIRO_LIBS) $(SQLITE3_LIBS) \
 	$(LIBJPEG_LIBS) $(GDKPIXBUF_LIBS) $(ZLIB_LIBS)
 
 src_libopenslide_la_SOURCES = \
+	src/isyntax.c \
+	src/yxml.c \
+	src/linux_utils.c \
+	src/platform.c \
+	src/jpeg_decoder.c \
 	src/openslide.c \
 	src/openslide-cache.c \
 	src/openslide-decode-gdkpixbuf.c \
@@ -40,6 +44,7 @@ src_libopenslide_la_SOURCES = \
 	src/openslide-vendor-leica.c \
 	src/openslide-vendor-mirax.c \
 	src/openslide-vendor-philips.c \
+	src/openslide-vendor-philips-isyntax.c \
 	src/openslide-vendor-sakura.c \
 	src/openslide-vendor-synthetic.c \
 	src/openslide-vendor-trestle.c \

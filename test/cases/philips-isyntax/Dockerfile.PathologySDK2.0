@@ -1,0 +1,37 @@
+# sudo docker image build -t philips_sdk_1804 -f Dockerfile .
+# sudo  docker run -v C:\projects\iSyntax\:/workspace -p 33890:3389 -it philips_sdk_1804  bash
+
+# Note: coords are specified at 0 level, and seems to need to be on 128px boundary. 
+
+# python3 patch_extraction.py /workspace/testslide.isyntax 1 False 0,0,3736,73216 7 && mv testslide_1/* /workspace/testslide_1/
+# python3 patch_extraction.py /workspace/testslide.isyntax 1 False 19200,19200,21248,21248 7 && mv testslide_1/* /workspace/testslide_1/
+
+# python3 isyntax_to_tiff.py /workspace/testslide.isyntax 0 0 0
+
+# convert testslide_0_0_37376_73216_7.png -background white -gravity northwest -splice 3x3 testslide_0_0_37376_73216_7_shifted_3_3.png
+
+# composite -compose difference testslide_0_0_37376_73216_5_shifted_22_22.png ~/openslide/build/tools/.libs/output.png  difference.png
+
+FROM ubuntu:18.04 as base
+
+RUN apt update
+RUN apt install -y python3.7
+
+COPY Ubuntu1804/philips-pathologysdk-2.0-ubuntu18_04_py36_research /philips-pathologysdk/
+COPY CodeSamples /philips-pathologysdk/
+WORKDIR /philips-pathologysdk/
+#RUN pwd
+#RUN ls -l
+
+ENV TERM=xterm-256color
+RUN echo y | bash InstallPathologySDK.sh py3
+
+RUN apt install -y libtiff5-dev zlib1g-dev libjpeg-dev
+RUN apt install -y vim
+RUN apt install -y python3-pip python3-tk
+RUN pip3 install numpy pillow
+
+# https://dev.to/avanishsubbiah/comment/lp3i
+RUN apt install -y xrdp xfce4
+
+WORKDIR /philips-pathologysdk/
