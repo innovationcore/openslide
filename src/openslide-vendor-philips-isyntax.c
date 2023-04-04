@@ -165,6 +165,11 @@ static bool philips_isyntax_read_tile(
                                               pi_level, tile_col, tile_row,
                                               &cache_entry);
     if (!tiledata) {
+        // TODO(avirodov): currently the cache is single-threaded, as supporting multiple threads will require
+        //  tracking data dependencies within the cache.
+        g_autoptr(GMutexLocker) locker G_GNUC_UNUSED =
+                g_mutex_locker_new(&data->cache->mutex);
+
         tiledata = isyntax_read_tile_bgra(&data->cache->cache, isyntax, pi_level->isyntax_level->scale, tile_col, tile_row);
         annotate_tile(tiledata, pi_level->isyntax_level->scale, tile_col, tile_row, tw, th);
 
